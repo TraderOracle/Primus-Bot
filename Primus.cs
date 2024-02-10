@@ -28,6 +28,7 @@ namespace Primus
         private DateTime dtStart = DateTime.Now;
         private String sLastTrade = String.Empty;
         private int iPrevOrderBar = -1;
+        private decimal dBreakEvenPrice = 0;
 
         private const int INFO = 1;
         private const int WARN = 2;
@@ -152,7 +153,8 @@ namespace Primus
         #region EXIT OPTIONS
 
         private bool bExWaddah = true;
-        private bool bExBBWick = true;
+        private bool bExHighLow = true;
+        private bool bExBBWick = false;
         private bool bExBBEngulf = true;
         private bool bExT3Cross = true;
         private bool bExKAMACross = true;
@@ -177,6 +179,8 @@ namespace Primus
         public bool ExBBEngulf { get => bExBBEngulf; set { bExBBEngulf = value; RecalculateValues(); } }
         [Display(GroupName = "Exit Trade When", Name = "Declining stairs")]
         public bool ExStairs { get => bExStairs; set { bExStairs = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Equal high/low")]
+        public bool ExHighLow { get => bExHighLow; set { bExHighLow = value; RecalculateValues(); } }
 
         [Display(Name = "ATR exceeds value", GroupName = "Exit Trade When", Order = int.MaxValue)]
         public double ExATR { get => dExATR; set { dExATR = value; RecalculateValues(); } }
@@ -380,7 +384,7 @@ namespace Primus
 
             #region CANDLE CALCULATIONS
 
-            var candle = GetCandle(bar - 1);
+            var candle = GetCandle(pbar);
             value = candle.Close;
             var chT = ChartInfo.ChartType;
             var red = candle.Close < candle.Open;
@@ -390,16 +394,15 @@ namespace Primus
             bShowUp = true;
 
             decimal _tick = ChartInfo.PriceChartContainer.Step;
-            var p1C = GetCandle(bar - 2);
-            var c1G = p1C.Open < p1C.Close;
-            var c1R = p1C.Open > p1C.Close;
-
-            var p2C = GetCandle(bar - 3);
-            var p3C = GetCandle(bar - 4);
-            var p4C = GetCandle(bar - 5);
+            var p1C = GetCandle(pbar - 1);
+            var p2C = GetCandle(pbar - 2);
+            var p3C = GetCandle(pbar - 3);
+            var p4C = GetCandle(pbar - 4);
 
             var c0G = candle.Open < candle.Close;
             var c0R = candle.Open > candle.Close;
+            var c1G = p1C.Open < p1C.Close;
+            var c1R = p1C.Open > p1C.Close;
             var c2G = p2C.Open < p2C.Close;
             var c2R = p2C.Open > p2C.Close;
             var c3G = p3C.Open < p3C.Close;
@@ -492,7 +495,7 @@ namespace Primus
 
             var ThreeOutDown = c2G && c1R && c0R && p1C.Open > p2C.Close && p2C.Open > p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close < p1C.Low;
 
-            var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
+            var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
 
             var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
 
@@ -574,17 +577,40 @@ namespace Primus
 
             #region EXIT STRATEGIES
 
-            if (bEnterBBWick && (bbWickLong || bbWickShort))
-                CloseCurrentPosition("Bollinger band wick EXIT");
+            if (TradingManager.Position.IsInPosition)
+            {
+                var dir = CurrentPosition > 0 ? LONG : SHORT;
 
-            // Go break even after X ticks
-            if (TradingManager.Position.IsInPosition &&
-            Math.Abs(candle.Open - TradingManager.Position.AveragePrice) > iAdvBETicks)
-                iJunk = 0;
+                if (bEnterBBWick && (bbWickLong || bbWickShort))
+                    CloseCurrentPosition("Bollinger band wick EXIT");
+
+                if (bExHighLow && (eqHigh || eqLow))
+                    CloseCurrentPosition("Equal high/low EXIT");
+
+                if (candle.Close < t3 && red && bExT3Cross && dir == LONG)
+                    CloseCurrentPosition("T3 cross EXIT");
+                if (candle.Close > t3 && green && bExT3Cross && dir == SHORT)
+                    CloseCurrentPosition("T3 cross EXIT");
+
+                if (candle.Close < kama9 && red && bExKAMACross && dir == LONG)
+                    CloseCurrentPosition("9 KAMA cross EXIT");
+                if (candle.Close > kama9 && green && bExKAMACross && dir == SHORT)
+                    CloseCurrentPosition("9 KAMA cross EXIT");
+
+                // Go break even after X ticks
+                if (Math.Abs(dBreakEvenPrice - Security.BestBidPrice) > (_tick * iAdvBETicks))
+                    iJunk = 0; // LimitAtBE();
+
+            }
 
             #endregion
 
             #region ENTRANCE STRATEGIES
+
+            if (green && candle.Low < kama9 && candle.Close > kama9 && bEnterKamaWick)
+                OpenPosition("9 KAMA Wick", candle, bar, LONG);
+            if (red && candle.High > kama9 && candle.Close < kama9 && bEnterKamaWick)
+                OpenPosition("9 KAMA Wick", candle, bar, SHORT);
 
             if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
                 OpenPosition("Volume Imbalance", candle, bar, LONG);
@@ -660,12 +686,34 @@ namespace Primus
                 Comment = "Bar " + bar + " - " + sReason
             };
 
+            dBreakEvenPrice = Security.BestAskPrice;
+
             if (iDirection == LONG)
-              sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
+                sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
             else
                 sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
 
             OpenOrder(_order);
+        }
+
+        private void LimitAtBE()
+        {
+            var iBEDirection = OrderDirections.Buy;
+            var currDir = CurrentPosition > 0 ? LONG : SHORT;
+            if (currDir == LONG)
+                iBEDirection = OrderDirections.Sell;
+
+            var order = new Order
+            {
+                Portfolio = Portfolio,
+                Security = Security,
+                Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
+                Type = OrderTypes.Limit,
+                QuantityToFill = Math.Abs(CurrentPosition),
+                Price = dBreakEvenPrice,
+                Comment = "Profit reached at " + iAdvBETicks + " ticks, break even open"
+            };
+            OpenOrder(order);
         }
 
         private void CloseCurrentPosition(String s)
