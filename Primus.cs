@@ -15,6 +15,16 @@ using MColor = System.Windows.Media.Color;
 using MColors = System.Windows.Media.Colors;
 using Pen = System.Drawing.Pen;
 using String = System.String;
+using OFT.Rendering.Context;
+using OFT.Rendering.Tools;
+using Utils.Common.Logging;
+using System.ComponentModel.Design;
+using static ATAS.Indicators.Technical.BarsPattern;
+
+
+// add max daily loss
+
+
 
 namespace Primus
 {
@@ -35,6 +45,11 @@ namespace Primus
         private int iFontSize = 10;
         private int iNewsFont = 10;
         private int iWaddaSensitivity = 120;
+        private const int INFO = 1;
+        private const int WARN = 2;
+        private const int ERROR = 3;
+        private const int LONG = 1;
+        private const int SHORT = 2;
 
         private bool _lastBarCounted;
         private bool bNewsProcessed = false;
@@ -42,7 +57,7 @@ namespace Primus
         private bool bShowDown = true;
         private bool bCloseOnStop = true;
 
-        public decimal Volume = 0;
+        public decimal Volume = 1;
 
         #endregion
 
@@ -256,35 +271,88 @@ namespace Primus
 
         public Primus()
         {
-            var firstSeries = (ValueDataSeries)DataSeries[0];
-            firstSeries.Name = "Short";
-            firstSeries.Color = MColors.Red;
-            firstSeries.VisualType = VisualMode.Line;
-
-            DataSeries.Add(new ValueDataSeries("Long")
-            {
-                VisualType = VisualMode.Line,
-                Color = MColors.Green,
-            });
-
             bCloseOnStop = true;
+        }
+
+        #endregion
+
+        #region RENDER CONTEXT
+
+        protected override void OnRender(RenderContext context, DrawingLayouts layout)
+        {
+            var font2 = new RenderFont("Arial", iNewsFont);
+            var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
+            int upY = 50;
+            int upX = ChartArea.Width - 350;
+            int iTrades = 0;
+
+            if (TradingManager.Portfolio != null)
+            {
+                var txt1 = $"Account: {TradingManager.Portfolio.AccountID}";
+                context.DrawString(txt1, font2, Color.Gray, upX, upY);
+                var tsize = context.MeasureString(txt1, font2);
+
+                upY += tsize.Height + 6;
+                if (TradingManager.Position != null)
+                {
+                    tsize = context.MeasureString(txt1, fontB);
+                    txt1 = $"Total PNL: {TradingManager.Position.RealizedPnL}";
+                    if (TradingManager.Position.RealizedPnL > 0)
+                        context.DrawString(txt1, fontB, Color.Lime, upX, upY);
+                    else
+                        context.DrawString(txt1, fontB, Color.Red, upX, upY);
+                }
+                upY += tsize.Height + 6;
+                var myTrades = TradingManager.MyTrades;
+                if (myTrades.Any())
+                {
+                    foreach (var myTrade in myTrades)
+                        iTrades++;
+                    tsize = context.MeasureString(txt1, font2);
+                    txt1 = $"Total Trades: " + iTrades;
+                    context.DrawString(txt1, font2, Color.Gray, upX, upY);
+                }
+            }
+
+            RenderFont font;
+            Size textSize;
+            int currY = 40;
+
+            font = new RenderFont("Arial", iNewsFont + 2);
+            textSize = context.MeasureString("Today's News:", font);
+            context.DrawString("Today's News:", font, Color.YellowGreen, 50, currY);
+            currY += textSize.Height + 10;
+            font = new RenderFont("Arial", iNewsFont);
+
+            foreach (string s in lsH)
+            {
+                textSize = context.MeasureString(s, font);
+                context.DrawString("High - " + s, font, Color.DarkOrange, 50, currY);
+                currY += textSize.Height;
+            }
+            currY += 9;
+            foreach (string s in lsM)
+            {
+                textSize = context.MeasureString(s, font);
+                context.DrawString("Med  - " + s, font, Color.Gray, 50, currY);
+                currY += textSize.Height;
+            }
         }
 
         #endregion
 
         #region Main Logic
 
-        // ========================================================================
-        // =========================    MAIN LOGIC      ===========================
-        // ========================================================================
-
         protected override void OnCalculate(int bar, decimal value)
         {
             var candle = GetCandle(bar);
-            value = candle.Close;
             var chT = ChartInfo.ChartType;
+            value = candle.Close;
             var prevBar = _lastBar;
             _lastBar = bar;
+
+            if (!CanProcess(bar) || prevBar == bar)
+                return;
 
             if (bar == 0)
             {
@@ -298,8 +366,10 @@ namespace Primus
             if (chT == "Tick" && candle.Ticks < 1500)
                 return;
 
-            if (!CanProcess(bar) || prevBar == bar)
-                return;
+            bShowDown = true;
+            bShowUp = true;
+
+            #region CANDLE CALCULATIONS
 
             decimal _tick = ChartInfo.PriceChartContainer.Step;
             var red = candle.Close < candle.Open;
@@ -307,19 +377,6 @@ namespace Primus
             var p1C = GetCandle(bar - 1);
             var c1G = p1C.Open < p1C.Close;
             var c1R = p1C.Open > p1C.Close;
-
-                var highPen = new Pen(new SolidBrush(Color.RebeccaPurple)) { Width = 2 };
-                if (green && c1G && candle.Open > p1C.Close)
-                {
-                    HorizontalLinesTillTouch.Add(new LineTillTouch(bar, candle.Open, highPen));
-                }
-                if (red && c1R && candle.Open < p1C.Close)
-                {
-                    HorizontalLinesTillTouch.Add(new LineTillTouch(bar, candle.Open, highPen));
-                }
-
-            bShowDown = true;
-            bShowUp = true;
 
             var p2C = GetCandle(bar - 2);
             var p3C = GetCandle(bar - 3);
@@ -343,9 +400,21 @@ namespace Primus
             var upWick50PerLarger = c0R && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
             var downWick50PerLarger = c0G && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
 
+            var deltaPer = candle.Delta > 0 ? (candle.Delta / candle.MaxDelta) * 100 : (candle.Delta / candle.MinDelta) * 100;
+
+            #endregion
+
+            // Volume Imbalance (candle gap)
+            if (green && c1G && candle.Open > p1C.Close && candle.Close > 0 && bEnterVolImb)
+                OpenPosition("Volume Imbalance", candle);
+            if (red && c1R && candle.Open < p1C.Close)
+                OpenPosition("Volume Imbalance", candle);
+
             var ThreeOutUp = c2R && c1G && c0G && p1C.Open < p2C.Close && p2C.Open < p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close > p1C.Low;
 
             var ThreeOutDown = c2G && c1R && c0R && p1C.Open > p2C.Close && p2C.Open > p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close < p1C.Low;
+
+            #region INDICATORS CALCULATE
 
             _t3.Calculate(bar, value);
             fastEma.Calculate(bar, value);
@@ -354,12 +423,6 @@ namespace Primus
             _macd.Calculate(bar, value);
             _bb.Calculate(bar, value);
             _rsi.Calculate(bar, value);
-
-            var deltaPer = candle.Delta > 0 ? (candle.Delta / candle.MaxDelta) * 100 : (candle.Delta / candle.MinDelta) * 100;
-
-            // ========================================================================
-            // ========================    SERIES FETCH    ============================
-            // ========================================================================
 
             var ao = ((ValueDataSeries)_ao.DataSeries[0])[bar];
             var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[bar];
@@ -394,14 +457,6 @@ namespace Primus
             var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 1];
             var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 2];
 
-            var eqHigh = c0R && c1R && c2G && c3G &&
-                candle.Close < p1C.Close &&
-                (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-
-            var eqLow = c0G && c1G && c2R && c3R &&
-                candle.Close > p1C.Close &&
-                (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-
             var t1 = ((fast - slow) - (fastM - slowM)) * iWaddaSensitivity;
 
             var fisherUp = (f1 < f2);
@@ -411,14 +466,20 @@ namespace Primus
             var psarBuy = (psar < candle.Close);
             var psarSell = (psar > candle.Close);
 
-            // ========================================================================
-            // ====================    SHOW/OTHER CONDITIONS    =======================
-            // ========================================================================
+            var atr = _atr[bar];
+            var median = (candle.Low + candle.High) / 2;
+            var dUpperLevel = median + atr * 1.7m;
+            var dLowerLevel = median - atr * 1.7m;
 
-            if (c4Body > c3Body && c3Body > c2Body && c2Body > c1Body && c1Body > c0Body)
-                if ((candle.Close > p1C.Close && p1C.Close > p2C.Close && p2C.Close > p3C.Close) ||
-                (candle.Close < p1C.Close && p1C.Close < p2C.Close && p2C.Close < p3C.Close))
-                    DrawText(bar, "Stairs", Color.Yellow, Color.Transparent);
+            #endregion
+
+            var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
+            if (eqHigh && bEnterHighLow && candle.Close > 0)
+                OpenPosition("Equal High", candle);
+
+            var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
+            if (eqLow && bEnterHighLow && candle.Close > 0)
+                OpenPosition("Equal Low", candle);
 
             if (deltaPer < iMinDeltaPercent)
             {
@@ -426,52 +487,37 @@ namespace Primus
                 bShowDown = false;
             }
 
-            var atr = _atr[bar];
-            var median = (candle.Low + candle.High) / 2;
-            var dUpperLevel = median + atr * 1.7m;
-            var dLowerLevel = median - atr * 1.7m;
-
             // Squeeze momentum relaxer show
             if (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1)
                 iJunk = 9;
             if (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1)
                 iJunk = 9;
 
-            // 9/21 cross show
-            if (nn > twone && prev_nn <= prev_twone)
-                DrawText(bar, "X", Color.Yellow, Color.Transparent);
-            if (nn < twone && prev_nn >= prev_twone)
-                DrawText(bar, "X", Color.Yellow, Color.Transparent);
-
-            if (eqHigh && candle.Close > 0)
-                DrawText(bar - 1, "Equal\nHigh", Color.Lime, Color.Transparent, false, true);
-            if (eqLow && candle.Close > 0)
-                DrawText(bar - 1, "Equal\nLow", Color.Yellow, Color.Transparent, false, true);
+            // 9/21 cross
+            if (nn > twone && prev_nn <= prev_twone && bEnter921Cross)
+                OpenPosition("9/21 cross", candle, LONG);
+            if (nn < twone && prev_nn >= prev_twone && bEnter921Cross)
+                OpenPosition("9/21 cross", candle, SHORT);
 
             if (c0G && c1R && c2R && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta < 0 && candle.Close > 0)
                 DrawText(bar, "Vol\nRev", Color.Yellow, Color.Transparent, false, true);
             if (c0R && c1G && c2G && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta > 0 && candle.Close > 0)
                 DrawText(bar, "Vol\nRev", Color.Lime, Color.Transparent, false, true);
 
-            // ========================================================================
-            // ========================    UP CONDITIONS    ===========================
-            // ========================================================================
-
+            // Standard BUY / SELL
             if ((candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 < 0 && bUseSqueeze) || (x < iMinADX))
                 bShowUp = false;
 
             if (green && bShowUp)
-                iJunk = candle.Low - (_tick * 2);
-
-            // ========================================================================
-            // ========================    DOWN CONDITIONS    =========================
-            // ========================================================================
+                OpenPosition("Standard Buy Signal", candle, LONG);
 
             if ((candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 > 0 && bUseSqueeze) || (x < iMinADX))
                 bShowDown = false;
 
             if (red && bShowDown)
-                iJunk = candle.High + _tick * 2;
+                OpenPosition("Standard Sell Signal", candle, SHORT);
+
+            #region ALERTS
 
             if (_lastBar != bar)
             {
@@ -494,15 +540,15 @@ namespace Primus
                     _lastBarCounted = true;
             }
 
-            // ========================================================================
-            // =======================    REVERSAL PATTERNS    ========================
-            // ========================================================================
+            #endregion
+
+            #region REVERSAL PATTERNS
 
             // Bollinger band bounce
-                if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger)
-                    DrawText(bar, "Wick", Color.Lime, Color.Transparent, false, true);
-                if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger)
-                    DrawText(bar, "Wick", Color.Orange, Color.Transparent, false, true);
+            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger)
+                DrawText(bar, "Wick", Color.Lime, Color.Transparent, false, true);
+            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger)
+                DrawText(bar, "Wick", Color.Orange, Color.Transparent, false, true);
 
             if (ThreeOutUp)
                 DrawText(bar, "3oU", Color.Yellow, Color.Transparent);
@@ -510,12 +556,12 @@ namespace Primus
                 DrawText(bar, "3oD", Color.Yellow, Color.Transparent);
 
             // Trampoline
-                if (c0R && c1R && candle.Close < p1C.Close && (rsi >= 70 || rsi1 >= 70 || rsi2 >= 70) &&
-                    c2G && p2C.High >= (bb_top - (_tick * 30)))
-                    DrawText(bar, "TR", Color.Yellow, Color.BlueViolet);
-                if (c0G && c1G && candle.Close > p1C.Close && (rsi < 25 || rsi1 < 25 || rsi2 < 25) &&
-                    c2R && p2C.Low <= (bb_bottom + (_tick * 30)))
-                    DrawText(bar - 2, "TR", Color.Yellow, Color.BlueViolet);
+            if (c0R && c1R && candle.Close < p1C.Close && (rsi >= 70 || rsi1 >= 70 || rsi2 >= 70) &&
+                c2G && p2C.High >= (bb_top - (_tick * 30)))
+                DrawText(bar, "TR", Color.Yellow, Color.BlueViolet);
+            if (c0G && c1G && candle.Close > p1C.Close && (rsi < 25 || rsi1 < 25 || rsi2 < 25) &&
+                c2R && p2C.Low <= (bb_bottom + (_tick * 30)))
+                DrawText(bar - 2, "TR", Color.Yellow, Color.BlueViolet);
 
             // Intensity signal
             var candleSeconds = Convert.ToDecimal((candle.LastTime - candle.Time).TotalSeconds);
@@ -524,18 +570,32 @@ namespace Primus
             var deltaPer1 = candle.Delta > 0 ? (candle.Delta / candle.MaxDelta) : (candle.Delta / candle.MinDelta);
             var deltaIntense = Math.Abs((candle.Delta * deltaPer1) * (candle.Volume / candleSeconds));
 
+            #endregion
+
             if (!bNewsProcessed)
                 LoadStock(bar);
+        }
 
-            if (false)
-            {
-                OpenPosition(OrderDirections.Buy);
-            }
+        private void OpenPosition(String sReason, IndicatorCandle c, int iDirection = -1)
+        {
+            OrderDirections d = OrderDirections.Buy; ;
 
-            if (false)
+            if (c.Open > c.Close || iDirection == SHORT)
+                d = OrderDirections.Sell;
+            if (c.Open < c.Close || iDirection == LONG)
+                d = OrderDirections.Buy;
+
+            var order = new Order
             {
-                OpenPosition(OrderDirections.Sell);
-            }
+                Portfolio = Portfolio,
+                Security = Security,
+                Direction = d,
+                Type = OrderTypes.Market,
+                QuantityToFill = GetOrderVolume(),
+                Comment = "Bar: " + c + " - " + sReason
+            };
+
+            OpenOrder(order);
         }
 
         protected override void OnStopping()
@@ -553,22 +613,14 @@ namespace Primus
 
         #region Private methods
 
-        // ========================================================================
-        // =======================    PRIVATE METHODS   ===========================
-        // ========================================================================
-
-        private void OpenPosition(OrderDirections direction)
+        private void AddLog(String s, int iSev = INFO)
         {
-            var order = new Order
+            switch (iSev)
             {
-                Portfolio = Portfolio,
-                Security = Security,
-                Direction = direction,
-                Type = OrderTypes.Market,
-                QuantityToFill = GetOrderVolume(),
-            };
-
-            OpenOrder(order);
+                case WARN: this.LogInfo(s); break;
+                case ERROR: this.LogWarn(s); break;
+                default: this.LogError(s); break;
+            }
         }
 
         private void CloseCurrentPosition()
@@ -589,11 +641,13 @@ namespace Primus
         {
             if (CurrentPosition == 0)
                 return Volume;
-
             if (CurrentPosition > 0)
                 return Volume + CurrentPosition;
 
-            return Volume + Math.Abs(CurrentPosition);
+            if (Volume + Math.Abs(CurrentPosition) > iAdvMaxContracts)
+                return iAdvMaxContracts;
+            else
+                return Volume + Math.Abs(CurrentPosition);
         }
 
         private decimal VolSec(IndicatorCandle c) { return c.Volume / Convert.ToDecimal((c.LastTime - c.Time).TotalSeconds); }
@@ -603,5 +657,6 @@ namespace Primus
         }
 
             #endregion
+
         }
     }
