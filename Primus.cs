@@ -17,6 +17,7 @@ using String = System.String;
 using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
 using Utils.Common.Logging;
+using System.Diagnostics;
 
 namespace Primus
 {
@@ -24,6 +25,7 @@ namespace Primus
     {
         #region Private fields
 
+        private Stopwatch clock = new Stopwatch();
         private Order _order;
         private DateTime dtStart = DateTime.Now;
         private String sLastTrade = String.Empty;
@@ -330,7 +332,6 @@ namespace Primus
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
-            // Rockwell
             var font = new RenderFont("Arial", iNewsFont);
             var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
             int upY = 50;
@@ -341,16 +342,18 @@ namespace Primus
             switch (iBotStatus)
             {
                 case ACTIVE:
-                    txt = $"BOT ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString();
+                    TimeSpan t = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds);
+                    String an = String.Format("{0:D2}:{1:D2}:{2:D2}", t.Hours, t.Minutes, t.Seconds);
+                    txt = $"BOT ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
                     context.DrawString(txt, fontB, Color.Lime, upX, upY);
+                    if (!clock.IsRunning)
+                        clock.Start();
                     break;
                 case STOPPED:
                     txt = $"BOT STOPPED on {TradingManager.Portfolio.AccountID}";
                     context.DrawString(txt, fontB, Color.Orange, upX, upY);
-                    break;
-                default:
-                    txt = $"BOT STOPPED on {TradingManager.Portfolio.AccountID}";
-                    context.DrawString(txt, fontB, Color.Orange, upX, upY);
+                    if (clock.IsRunning)
+                        clock.Stop();
                     break;
             }
             var tsize = context.MeasureString(txt, fontB);
@@ -649,6 +652,12 @@ namespace Primus
 
         private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
         {
+            // Limit 1 order per bar
+            if (iPrevOrderBar == bar)
+                return;
+            else
+                iPrevOrderBar = bar;
+
             var currDir = CurrentPosition > 0 ? LONG : SHORT;
             if (iDirection != currDir)
                 CloseCurrentPosition("Opposite trade, closing current position");
@@ -662,12 +671,6 @@ namespace Primus
                 AddLog("Attempted to open trade after MAX TRADES has been reached", WARN);
                 return;
             }
-
-            // Limit 1 order per bar
-            if (iPrevOrderBar == bar)
-                return;
-            else
-                iPrevOrderBar = bar;
 
             OrderDirections d = OrderDirections.Buy;
 
