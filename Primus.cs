@@ -18,8 +18,6 @@ using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
 using Utils.Common.Logging;
 
-// add max daily loss 
-
 namespace Primus
 {
     public class Primus : ChartStrategy
@@ -330,6 +328,7 @@ namespace Primus
 
         protected override void OnCalculate(int bar, decimal value)
         {
+            var pbar = bar - 1;
             var prevBar = _prevBar;
             _prevBar = bar;
 
@@ -397,46 +396,46 @@ namespace Primus
 
             #region INDICATORS CALCULATE
 
-            _t3.Calculate(bar-1, value);
-            fastEma.Calculate(bar - 1, value);
-            slowEma.Calculate(bar - 1, value);
-            _21.Calculate(bar - 1, value);
-            _macd.Calculate(bar - 1, value);
-            _bb.Calculate(bar - 1, value);
-            _rsi.Calculate(bar - 1, value);
+            _t3.Calculate(pbar, value);
+            fastEma.Calculate(pbar, value);
+            slowEma.Calculate(pbar, value);
+            _21.Calculate(pbar, value);
+            _macd.Calculate(pbar, value);
+            _bb.Calculate(pbar, value);
+            _rsi.Calculate(pbar, value);
 
-            var ao = ((ValueDataSeries)_ao.DataSeries[0])[bar - 1];
-            var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[bar - 1];
-            var kama21 = ((ValueDataSeries)_kama9.DataSeries[0])[bar - 1];
-            var m1 = ((ValueDataSeries)_macd.DataSeries[0])[bar - 1];
-            var m2 = ((ValueDataSeries)_macd.DataSeries[1])[bar - 1];
-            var m3 = ((ValueDataSeries)_macd.DataSeries[2])[bar - 1];
-            var t3 = ((ValueDataSeries)_t3.DataSeries[0])[bar - 1];
-            var fast = ((ValueDataSeries)fastEma.DataSeries[0])[bar - 1];
-            var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[bar - 2];
-            var slow = ((ValueDataSeries)slowEma.DataSeries[0])[bar - 1];
-            var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[bar - 2];
-            var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 1];
-            var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 1];
-            var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 2];
-            var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 3];
-            var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 3];
-            var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 3];
-            var f1 = ((ValueDataSeries)_ft.DataSeries[0])[bar - 1];
-            var f2 = ((ValueDataSeries)_ft.DataSeries[1])[bar - 1];
-            var st = ((ValueDataSeries)_st.DataSeries[0])[bar - 1];
-            var x = ((ValueDataSeries)_adx.DataSeries[0])[bar - 1];
-            var nn = ((ValueDataSeries)_9.DataSeries[0])[bar - 1];
-            var prev_nn = ((ValueDataSeries)_9.DataSeries[0])[bar - 2];
-            var twone = ((ValueDataSeries)_21.DataSeries[0])[bar - 1];
-            var prev_twone = ((ValueDataSeries)_21.DataSeries[0])[bar - 2];
-            var psar = ((ValueDataSeries)_psar.DataSeries[0])[bar - 1];
-            var bb_mid = ((ValueDataSeries)_bb.DataSeries[0])[bar - 1]; // mid
-            var bb_top = ((ValueDataSeries)_bb.DataSeries[1])[bar - 1]; // top
-            var bb_bottom = ((ValueDataSeries)_bb.DataSeries[2])[bar - 1]; // bottom
-            var rsi = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 1];
-            var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 2];
-            var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 3];
+            var ao = ((ValueDataSeries)_ao.DataSeries[0])[pbar];
+            var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[pbar];
+            var kama21 = ((ValueDataSeries)_kama9.DataSeries[0])[pbar];
+            var m1 = ((ValueDataSeries)_macd.DataSeries[0])[pbar];
+            var m2 = ((ValueDataSeries)_macd.DataSeries[1])[pbar];
+            var m3 = ((ValueDataSeries)_macd.DataSeries[2])[pbar];
+            var t3 = ((ValueDataSeries)_t3.DataSeries[0])[pbar];
+            var fast = ((ValueDataSeries)fastEma.DataSeries[0])[pbar];
+            var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[pbar - 1];
+            var slow = ((ValueDataSeries)slowEma.DataSeries[0])[pbar];
+            var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[pbar - 1];
+            var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar];
+            var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar];
+            var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 1];
+            var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 1];
+            var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 2];
+            var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 2];
+            var f1 = ((ValueDataSeries)_ft.DataSeries[0])[pbar];
+            var f2 = ((ValueDataSeries)_ft.DataSeries[1])[pbar];
+            var st = ((ValueDataSeries)_st.DataSeries[0])[pbar];
+            var x = ((ValueDataSeries)_adx.DataSeries[0])[pbar];
+            var nn = ((ValueDataSeries)_9.DataSeries[0])[pbar];
+            var prev_nn = ((ValueDataSeries)_9.DataSeries[0])[pbar - 1];
+            var twone = ((ValueDataSeries)_21.DataSeries[0])[pbar];
+            var prev_twone = ((ValueDataSeries)_21.DataSeries[0])[pbar - 1];
+            var psar = ((ValueDataSeries)_psar.DataSeries[0])[pbar];
+            var bb_mid = ((ValueDataSeries)_bb.DataSeries[0])[pbar]; // mid
+            var bb_top = ((ValueDataSeries)_bb.DataSeries[1])[pbar]; // top
+            var bb_bottom = ((ValueDataSeries)_bb.DataSeries[2])[pbar]; // bottom
+            var rsi = ((ValueDataSeries)_rsi.DataSeries[0])[pbar];
+            var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 1];
+            var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 2];
 
             var t1 = ((fast - slow) - (fastM - slowM)) * iWaddaSensitivity;
 
@@ -555,7 +554,17 @@ namespace Primus
         #region PRIVATE METHODS
 
         private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
-        { 
+        {
+            int iOpenTrades = 0;
+            foreach (MyTrade xy in this.MyTrades)
+                if (xy.Order.State == OrderStates.Active)
+                    iOpenTrades++;
+            if (iOpenTrades > iAdvMaxContracts)
+            {
+                AddLog("Attempted to open trade after MAX TRADES has been reached", WARN);
+                return;
+            }
+
             // Limit 1 order per bar
             if (iPrevOrderBar == bar)
                 return;
