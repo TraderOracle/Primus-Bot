@@ -619,7 +619,7 @@ namespace Primus
 
         #endregion
 
-        #region PRIVATE METHODS
+        #region POSITION METHODS
 
         private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
         {
@@ -656,7 +656,7 @@ namespace Primus
                 Security = Security,
                 Direction = d,
                 Type = OrderTypes.Market,
-                QuantityToFill = GetOrderVolume(),
+                QuantityToFill = 1, // GetOrderVolume(),
                 Comment = "Bar " + bar + " - " + sReason
             };
 
@@ -666,6 +666,34 @@ namespace Primus
                 sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
 
             OpenOrder(_order);
+        }
+
+        private void CloseCurrentPosition(String s)
+        {
+            var order = new Order
+            {
+                Portfolio = Portfolio,
+                Security = Security,
+                Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
+                Type = OrderTypes.Market,
+                QuantityToFill = Math.Abs(CurrentPosition),
+                Comment = s
+            };
+
+            OpenOrder(order);
+        }
+
+        private decimal GetOrderVolume()
+        {
+            if (CurrentPosition == 0)
+                return Volume;
+            if (CurrentPosition > 0)
+                return Volume + CurrentPosition;
+
+            if (Volume + Math.Abs(CurrentPosition) > iAdvMaxContracts)
+                return iAdvMaxContracts;
+            else
+                return Volume + Math.Abs(CurrentPosition);
         }
 
         protected override void OnOrderRegisterFailed(Order order, string message)
@@ -709,13 +737,16 @@ namespace Primus
         {
             if (CurrentPosition != 0 && bCloseOnStop)
             {
-                RaiseShowNotification($"Closing current position {CurrentPosition} on stopping.");
-                CloseCurrentPosition($"Closing current position {CurrentPosition} on stopping.");
+                RaiseShowNotification($"Closing position {CurrentPosition} on stopping.");
+                CloseCurrentPosition($"Closing position {CurrentPosition} on stopping.");
             }
 
             base.OnStopping();
         }
 
+        #endregion
+
+        #region MISC METHODS
 
         private void AddLog(String s, int iSev = INFO)
         {
@@ -725,34 +756,6 @@ namespace Primus
                 case ERROR: this.LogWarn(s); break;
                 default: this.LogError(s); break;
             }
-        }
-
-        private void CloseCurrentPosition(String s)
-        {
-            var order = new Order
-            {
-                Portfolio = Portfolio,
-                Security = Security,
-                Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
-                Type = OrderTypes.Market,
-                QuantityToFill = Math.Abs(CurrentPosition),
-                Comment = s
-            };
-
-            OpenOrder(order);
-        }
-
-        private decimal GetOrderVolume()
-        {
-            if (CurrentPosition == 0)
-                return Volume;
-            if (CurrentPosition > 0)
-                return Volume + CurrentPosition;
-
-            if (Volume + Math.Abs(CurrentPosition) > iAdvMaxContracts)
-                return iAdvMaxContracts;
-            else
-                return Volume + Math.Abs(CurrentPosition);
         }
 
         private decimal VolSec(IndicatorCandle c) { return c.Volume / Convert.ToDecimal((c.LastTime - c.Time).TotalSeconds); }
