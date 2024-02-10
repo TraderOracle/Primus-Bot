@@ -5,7 +5,6 @@ using ATAS.Indicators;
 using ATAS.Indicators.Technical;
 using ATAS.Strategies.Chart;
 using System.Net;
-using ATAS.Indicators.Drawing;
 using ATAS.Indicators.Technical.Properties;
 using Newtonsoft.Json.Linq;
 using static ATAS.Indicators.Technical.SampleProperties;
@@ -18,10 +17,6 @@ using String = System.String;
 using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
 using Utils.Common.Logging;
-using System.ComponentModel.Design;
-using static ATAS.Indicators.Technical.BarsPattern;
-using ATAS.Indicators.Other;
-using System.Windows.Media;
 
 
 // add max daily loss
@@ -36,6 +31,8 @@ namespace Primus
 
         private Order _order;
         private DateTime dtStart = DateTime.Now;
+        private String sLastTrade = String.Empty;
+        private int iPrevOrderBar = -1;
 
         private const int INFO = 1;
         private const int WARN = 2;
@@ -50,7 +47,8 @@ namespace Primus
         private List<string> lsM = new List<string>();
 
         private decimal iJunk = 0;
-        private int _lastBar;
+        private int _lastBar = -1;
+        private int _prevBar = -1;
         private int iMinDelta = 0;
         private int iMinDeltaPercent = 0;
         private int iMinADX = 0;
@@ -58,7 +56,7 @@ namespace Primus
         private int iFontSize = 10;
         private int iNewsFont = 10;
         private int iWaddaSensitivity = 150;
-        private int iBotStatus = STOPPED;
+        private int iBotStatus = ACTIVE;
         private int iTotalTrades = 0;
 
         private bool _lastBarCounted;
@@ -282,6 +280,7 @@ namespace Primus
         public Primus()
         {
             bCloseOnStop = true;
+            EnableCustomDrawing = true;
         }
 
         #endregion
@@ -293,7 +292,7 @@ namespace Primus
             var font = new RenderFont("Arial", iNewsFont);
             var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
             int upY = 50;
-            int upX = ChartArea.Width - 350;
+            int upX = 50;
             var txt = String.Empty;
 
             // LINE 1 - BOT STATUS + ACCOUNT + START TIME
@@ -319,10 +318,10 @@ namespace Primus
             if (TradingManager.Portfolio != null && TradingManager.Position != null)
             {
                 txt = $"{TradingManager.MyTrades.Count()} trades, with PNL: {TradingManager.Position.RealizedPnL}";
-                context.DrawString(txt, font, Color.Gray, upX, upY);
+                context.DrawString(txt, font, Color.White, upX, upY);
                 upY += tsize.Height + 6;
-                txt = $"Total Trades: " + TradingManager.MyTrades.Count();
-                context.DrawString(txt, font, Color.Gray, upX, upY);
+                txt = sLastTrade;
+                context.DrawString(txt, font, Color.White, upX, upY);
             }
 
 
@@ -334,17 +333,17 @@ namespace Primus
 
         protected override void OnCalculate(int bar, decimal value)
         {
-            var candle = GetCandle(bar);
-            var chT = ChartInfo.ChartType;
+            var prevBar = _prevBar;
+            _prevBar = bar;
+
+            if (prevBar == bar)
+                return;
+
+            var candle = GetCandle(bar-1);
             value = candle.Close;
-            var prevBar = _lastBar;
-            _lastBar = bar;
-
-//            if (!CanProcess(bar)) // || prevBar == bar)
-//                return;
-
-//            if (chT == "Tick" && candle.Ticks < 1500)
-//                return;
+            var chT = ChartInfo.ChartType;
+            var red = candle.Close < candle.Open;
+            var green = candle.Close > candle.Open;
 
             bShowDown = true;
             bShowUp = true;
@@ -352,15 +351,13 @@ namespace Primus
             #region CANDLE CALCULATIONS
 
             decimal _tick = ChartInfo.PriceChartContainer.Step;
-            var red = candle.Close < candle.Open;
-            var green = candle.Close > candle.Open;
-            var p1C = GetCandle(bar - 1);
+            var p1C = GetCandle(bar - 2);
             var c1G = p1C.Open < p1C.Close;
             var c1R = p1C.Open > p1C.Close;
 
-            var p2C = GetCandle(bar - 2);
-            var p3C = GetCandle(bar - 3);
-            var p4C = GetCandle(bar - 4);
+            var p2C = GetCandle(bar - 3);
+            var p3C = GetCandle(bar - 4);
+            var p4C = GetCandle(bar - 5);
 
             var c0G = candle.Open < candle.Close;
             var c0R = candle.Open > candle.Close;
@@ -380,15 +377,22 @@ namespace Primus
             var upWick50PerLarger = c0R && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
             var downWick50PerLarger = c0G && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
 
-            var deltaPer = candle.Delta > 0 ? (candle.Delta / candle.MaxDelta) * 100 : (candle.Delta / candle.MinDelta) * 100;
+            decimal deltaPer = 0;
+            if (candle.Delta > 0 && candle.MaxDelta > 0)
+            {
+                if (candle.MinDelta > 0)
+                    deltaPer = (candle.Delta / candle.MaxDelta) * 100;
+                else
+                    deltaPer = (candle.Delta / candle.MinDelta) * 100;
+            }
 
             #endregion
 
             // Volume Imbalance (candle gap)
-            if (green && c1G && candle.Open > p1C.Close && candle.Close > 0 && bEnterVolImb)
-                OpenPosition("Volume Imbalance", candle);
+            if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
+                OpenPosition("Volume Imbalance", candle, bar, LONG);
             if (red && c1R && candle.Open < p1C.Close)
-                OpenPosition("Volume Imbalance", candle);
+                OpenPosition("Volume Imbalance", candle, bar, SHORT);
 
             var ThreeOutUp = c2R && c1G && c0G && p1C.Open < p2C.Close && p2C.Open < p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close > p1C.Low;
 
@@ -396,46 +400,46 @@ namespace Primus
 
             #region INDICATORS CALCULATE
 
-            _t3.Calculate(bar, value);
-            fastEma.Calculate(bar, value);
-            slowEma.Calculate(bar, value);
-            _21.Calculate(bar, value);
-            _macd.Calculate(bar, value);
-            _bb.Calculate(bar, value);
-            _rsi.Calculate(bar, value);
+            _t3.Calculate(bar-1, value);
+            fastEma.Calculate(bar - 1, value);
+            slowEma.Calculate(bar - 1, value);
+            _21.Calculate(bar - 1, value);
+            _macd.Calculate(bar - 1, value);
+            _bb.Calculate(bar - 1, value);
+            _rsi.Calculate(bar - 1, value);
 
-            var ao = ((ValueDataSeries)_ao.DataSeries[0])[bar];
-            var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[bar];
-            var kama21 = ((ValueDataSeries)_kama9.DataSeries[0])[bar];
-            var m1 = ((ValueDataSeries)_macd.DataSeries[0])[bar];
-            var m2 = ((ValueDataSeries)_macd.DataSeries[1])[bar];
-            var m3 = ((ValueDataSeries)_macd.DataSeries[2])[bar];
-            var t3 = ((ValueDataSeries)_t3.DataSeries[0])[bar];
-            var fast = ((ValueDataSeries)fastEma.DataSeries[0])[bar];
-            var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[bar - 1];
-            var slow = ((ValueDataSeries)slowEma.DataSeries[0])[bar];
-            var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[bar - 1];
-            var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar];
-            var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar];
-            var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 1];
-            var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 1];
-            var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 2];
-            var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 2];
-            var f1 = ((ValueDataSeries)_ft.DataSeries[0])[bar];
-            var f2 = ((ValueDataSeries)_ft.DataSeries[1])[bar];
-            var st = ((ValueDataSeries)_st.DataSeries[0])[bar];
-            var x = ((ValueDataSeries)_adx.DataSeries[0])[bar];
-            var nn = ((ValueDataSeries)_9.DataSeries[0])[bar];
-            var prev_nn = ((ValueDataSeries)_9.DataSeries[0])[bar - 1];
-            var twone = ((ValueDataSeries)_21.DataSeries[0])[bar];
-            var prev_twone = ((ValueDataSeries)_21.DataSeries[0])[bar - 1];
-            var psar = ((ValueDataSeries)_psar.DataSeries[0])[bar];
-            var bb_mid = ((ValueDataSeries)_bb.DataSeries[0])[bar]; // mid
-            var bb_top = ((ValueDataSeries)_bb.DataSeries[1])[bar]; // top
-            var bb_bottom = ((ValueDataSeries)_bb.DataSeries[2])[bar]; // bottom
-            var rsi = ((ValueDataSeries)_rsi.DataSeries[0])[bar];
-            var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 1];
-            var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 2];
+            var ao = ((ValueDataSeries)_ao.DataSeries[0])[bar - 1];
+            var kama9 = ((ValueDataSeries)_kama9.DataSeries[0])[bar - 1];
+            var kama21 = ((ValueDataSeries)_kama9.DataSeries[0])[bar - 1];
+            var m1 = ((ValueDataSeries)_macd.DataSeries[0])[bar - 1];
+            var m2 = ((ValueDataSeries)_macd.DataSeries[1])[bar - 1];
+            var m3 = ((ValueDataSeries)_macd.DataSeries[2])[bar - 1];
+            var t3 = ((ValueDataSeries)_t3.DataSeries[0])[bar - 1];
+            var fast = ((ValueDataSeries)fastEma.DataSeries[0])[bar - 1];
+            var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[bar - 2];
+            var slow = ((ValueDataSeries)slowEma.DataSeries[0])[bar - 1];
+            var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[bar - 2];
+            var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 1];
+            var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 1];
+            var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 2];
+            var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 3];
+            var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[bar - 3];
+            var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[bar - 3];
+            var f1 = ((ValueDataSeries)_ft.DataSeries[0])[bar - 1];
+            var f2 = ((ValueDataSeries)_ft.DataSeries[1])[bar - 1];
+            var st = ((ValueDataSeries)_st.DataSeries[0])[bar - 1];
+            var x = ((ValueDataSeries)_adx.DataSeries[0])[bar - 1];
+            var nn = ((ValueDataSeries)_9.DataSeries[0])[bar - 1];
+            var prev_nn = ((ValueDataSeries)_9.DataSeries[0])[bar - 2];
+            var twone = ((ValueDataSeries)_21.DataSeries[0])[bar - 1];
+            var prev_twone = ((ValueDataSeries)_21.DataSeries[0])[bar - 2];
+            var psar = ((ValueDataSeries)_psar.DataSeries[0])[bar - 1];
+            var bb_mid = ((ValueDataSeries)_bb.DataSeries[0])[bar - 1]; // mid
+            var bb_top = ((ValueDataSeries)_bb.DataSeries[1])[bar - 1]; // top
+            var bb_bottom = ((ValueDataSeries)_bb.DataSeries[2])[bar - 1]; // bottom
+            var rsi = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 1];
+            var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 2];
+            var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[bar - 3];
 
             var t1 = ((fast - slow) - (fastM - slowM)) * iWaddaSensitivity;
 
@@ -454,12 +458,12 @@ namespace Primus
             #endregion
 
             var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-            if (eqHigh && bEnterHighLow && candle.Close > 0)
-                OpenPosition("Equal High", candle);
+            if (eqHigh && bEnterHighLow)
+                OpenPosition("Equal High", candle, bar, SHORT);
 
             var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-            if (eqLow && bEnterHighLow && candle.Close > 0)
-                OpenPosition("Equal Low", candle);
+            if (eqLow && bEnterHighLow)
+                OpenPosition("Equal Low", candle, bar, LONG);
 
             if (deltaPer < iMinDeltaPercent)
             {
@@ -475,9 +479,9 @@ namespace Primus
 
             // 9/21 cross
             if (nn > twone && prev_nn <= prev_twone && bEnter921Cross)
-                OpenPosition("9/21 cross", candle, LONG);
+                OpenPosition("9/21 cross", candle, bar, LONG);
             if (nn < twone && prev_nn >= prev_twone && bEnter921Cross)
-                OpenPosition("9/21 cross", candle, SHORT);
+                OpenPosition("9/21 cross", candle, bar, SHORT);
 
             if (c0G && c1R && c2R && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta < 0 && candle.Close > 0)
                 DrawText(bar, "Vol\nRev", Color.Yellow, Color.Transparent, false, true);
@@ -489,13 +493,13 @@ namespace Primus
                 bShowUp = false;
 
             if (green && bShowUp)
-                OpenPosition("Standard Buy Signal", candle, LONG);
+                OpenPosition("Standard Buy Signal", candle, bar, LONG);
 
             if ((candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 > 0 && bUseSqueeze) || (x < iMinADX))
                 bShowDown = false;
 
             if (red && bShowDown)
-                OpenPosition("Standard Sell Signal", candle, SHORT);
+                OpenPosition("Standard Sell Signal", candle, bar, SHORT);
 
             #region ALERTS
 
@@ -543,13 +547,6 @@ namespace Primus
                 c2R && p2C.Low <= (bb_bottom + (_tick * 30)))
                 DrawText(bar - 2, "TR", Color.Yellow, Color.BlueViolet);
 
-            // Intensity signal
-            var candleSeconds = Convert.ToDecimal((candle.LastTime - candle.Time).TotalSeconds);
-            if (candleSeconds is 0) candleSeconds = 1;
-            var volPerSecond = candle.Volume / candleSeconds;
-            var deltaPer1 = candle.Delta > 0 ? (candle.Delta / candle.MaxDelta) : (candle.Delta / candle.MinDelta);
-            var deltaIntense = Math.Abs((candle.Delta * deltaPer1) * (candle.Volume / candleSeconds));
-
             #endregion
 
             if (!bNewsProcessed)
@@ -560,9 +557,15 @@ namespace Primus
 
         #region PRIVATE METHODS
 
-        private void OpenPosition(String sReason, IndicatorCandle c, int iDirection = -1)
-        {
-            OrderDirections d = OrderDirections.Buy; ;
+        private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
+        { 
+            // Limit 1 order per bar
+            if (iPrevOrderBar == bar)
+                return;
+            else
+                iPrevOrderBar = bar;
+
+            OrderDirections d = OrderDirections.Buy;
 
             if (c.Open > c.Close || iDirection == SHORT)
                 d = OrderDirections.Sell;
@@ -576,8 +579,13 @@ namespace Primus
                 Direction = d,
                 Type = OrderTypes.Market,
                 QuantityToFill = GetOrderVolume(),
-                Comment = "Bar: " + c + " - " + sReason
+                Comment = "Bar " + bar + " - " + sReason
             };
+
+            if (iDirection == LONG)
+              sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
+            else
+                sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
 
             OpenOrder(_order);
         }
