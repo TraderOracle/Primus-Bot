@@ -20,6 +20,8 @@ using OFT.Rendering.Tools;
 using Utils.Common.Logging;
 using System.ComponentModel.Design;
 using static ATAS.Indicators.Technical.BarsPattern;
+using ATAS.Indicators.Other;
+using System.Windows.Media;
 
 
 // add max daily loss
@@ -31,6 +33,17 @@ namespace Primus
     public class Primus : ChartStrategy
     {
         #region Private fields
+
+        private Order _order;
+        private DateTime dtStart = DateTime.Now;
+
+        private const int INFO = 1;
+        private const int WARN = 2;
+        private const int ERROR = 3;
+        private const int LONG = 1;
+        private const int SHORT = 2;
+        private const int ACTIVE = 1;
+        private const int STOPPED = 2;
 
         private const String sVersion = "1.0";
         private List<string> lsH = new List<string>();
@@ -44,12 +57,9 @@ namespace Primus
         private int iOffset = 9;
         private int iFontSize = 10;
         private int iNewsFont = 10;
-        private int iWaddaSensitivity = 120;
-        private const int INFO = 1;
-        private const int WARN = 2;
-        private const int ERROR = 3;
-        private const int LONG = 1;
-        private const int SHORT = 2;
+        private int iWaddaSensitivity = 150;
+        private int iBotStatus = STOPPED;
+        private int iTotalTrades = 0;
 
         private bool _lastBarCounted;
         private bool bNewsProcessed = false;
@@ -111,9 +121,9 @@ namespace Primus
         private bool bSkipBBPushed = true;
         private bool bSkipOSOB = true;
 
-        [Display(GroupName = "Skip trading when", Name = "")]
+        [Display(GroupName = "Skip trading when", Name = "BB stressed")]
         public bool SkipBBPushed { get => bSkipBBPushed; set { bSkipBBPushed = value; RecalculateValues(); } }
-        [Display(GroupName = "Skip trading when", Name = "")]
+        [Display(GroupName = "Skip trading when", Name = "Oversold or Overbought")]
         public bool SkipOSOB { get => bSkipOSOB; set { bSkipOSOB = value; RecalculateValues(); } }
 
         #endregion
@@ -280,68 +290,47 @@ namespace Primus
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
-            var font2 = new RenderFont("Arial", iNewsFont);
+            var font = new RenderFont("Arial", iNewsFont);
             var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
             int upY = 50;
             int upX = ChartArea.Width - 350;
-            int iTrades = 0;
+            var txt = String.Empty;
 
-            if (TradingManager.Portfolio != null)
+            // LINE 1 - BOT STATUS + ACCOUNT + START TIME
+            switch (iBotStatus)
             {
-                var txt1 = $"Account: {TradingManager.Portfolio.AccountID}";
-                context.DrawString(txt1, font2, Color.Gray, upX, upY);
-                var tsize = context.MeasureString(txt1, font2);
+                case ACTIVE:
+                    txt = $"BOT ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString();
+                    context.DrawString(txt, fontB, Color.Lime, upX, upY);
+                    break;
+                case STOPPED:
+                    txt = $"BOT STOPPED on {TradingManager.Portfolio.AccountID}";
+                    context.DrawString(txt, fontB, Color.Orange, upX, upY);
+                    break;
+                default:
+                    txt = $"BOT STOPPED on {TradingManager.Portfolio.AccountID}";
+                    context.DrawString(txt, fontB, Color.Orange, upX, upY);
+                    break;
+            }
+            var tsize = context.MeasureString(txt, fontB);
+            upY += tsize.Height + 6;
 
+            // LINE 2 - TOTAL TRADES + PNL
+            if (TradingManager.Portfolio != null && TradingManager.Position != null)
+            {
+                txt = $"{TradingManager.MyTrades.Count()} trades, with PNL: {TradingManager.Position.RealizedPnL}";
+                context.DrawString(txt, font, Color.Gray, upX, upY);
                 upY += tsize.Height + 6;
-                if (TradingManager.Position != null)
-                {
-                    tsize = context.MeasureString(txt1, fontB);
-                    txt1 = $"Total PNL: {TradingManager.Position.RealizedPnL}";
-                    if (TradingManager.Position.RealizedPnL > 0)
-                        context.DrawString(txt1, fontB, Color.Lime, upX, upY);
-                    else
-                        context.DrawString(txt1, fontB, Color.Red, upX, upY);
-                }
-                upY += tsize.Height + 6;
-                var myTrades = TradingManager.MyTrades;
-                if (myTrades.Any())
-                {
-                    foreach (var myTrade in myTrades)
-                        iTrades++;
-                    tsize = context.MeasureString(txt1, font2);
-                    txt1 = $"Total Trades: " + iTrades;
-                    context.DrawString(txt1, font2, Color.Gray, upX, upY);
-                }
+                txt = $"Total Trades: " + TradingManager.MyTrades.Count();
+                context.DrawString(txt, font, Color.Gray, upX, upY);
             }
 
-            RenderFont font;
-            Size textSize;
-            int currY = 40;
 
-            font = new RenderFont("Arial", iNewsFont + 2);
-            textSize = context.MeasureString("Today's News:", font);
-            context.DrawString("Today's News:", font, Color.YellowGreen, 50, currY);
-            currY += textSize.Height + 10;
-            font = new RenderFont("Arial", iNewsFont);
-
-            foreach (string s in lsH)
-            {
-                textSize = context.MeasureString(s, font);
-                context.DrawString("High - " + s, font, Color.DarkOrange, 50, currY);
-                currY += textSize.Height;
-            }
-            currY += 9;
-            foreach (string s in lsM)
-            {
-                textSize = context.MeasureString(s, font);
-                context.DrawString("Med  - " + s, font, Color.Gray, 50, currY);
-                currY += textSize.Height;
-            }
         }
 
         #endregion
 
-        #region Main Logic
+        #region MAIN LOGIC
 
         protected override void OnCalculate(int bar, decimal value)
         {
@@ -351,20 +340,11 @@ namespace Primus
             var prevBar = _lastBar;
             _lastBar = bar;
 
-            if (!CanProcess(bar) || prevBar == bar)
-                return;
+//            if (!CanProcess(bar)) // || prevBar == bar)
+//                return;
 
-            if (bar == 0)
-            {
-                DataSeries.ForEach(x => x.Clear());
-                _lastBarCounted = false;
-                return;
-            }
-            if (bar < 5)
-                return;
-
-            if (chT == "Tick" && candle.Ticks < 1500)
-                return;
+//            if (chT == "Tick" && candle.Ticks < 1500)
+//                return;
 
             bShowDown = true;
             bShowUp = true;
@@ -576,6 +556,10 @@ namespace Primus
                 LoadStock(bar);
         }
 
+        #endregion
+
+        #region PRIVATE METHODS
+
         private void OpenPosition(String sReason, IndicatorCandle c, int iDirection = -1)
         {
             OrderDirections d = OrderDirections.Buy; ;
@@ -585,7 +569,7 @@ namespace Primus
             if (c.Open < c.Close || iDirection == LONG)
                 d = OrderDirections.Buy;
 
-            var order = new Order
+            _order = new Order
             {
                 Portfolio = Portfolio,
                 Security = Security,
@@ -595,7 +579,44 @@ namespace Primus
                 Comment = "Bar: " + c + " - " + sReason
             };
 
-            OpenOrder(order);
+            OpenOrder(_order);
+        }
+
+        protected override void OnOrderRegisterFailed(Order order, string message)
+        {
+            if (order == _order)
+            {
+                AddLog("ORDER FAILED: " + message, ERROR);
+            }
+        }
+
+        protected override void OnOrderChanged(Order order)
+        {
+            if (order == _order)
+            {
+                switch (order.Status())
+                {
+                    case OrderStatus.None:
+                        // The order has an undefined status (you need to wait for the next method calls).
+                        break;
+                    case OrderStatus.Placed:
+                        // the order is placed.
+                        break;
+                    case OrderStatus.Filled:
+                        // the order is filled.
+                        break;
+                    case OrderStatus.PartlyFilled:
+                        // the order is partially filled.
+                        {
+                            var unfilled = order.Unfilled; // this is a unfilled volume.
+
+                            break;
+                        }
+                    case OrderStatus.Canceled:
+                        // the order is canceled.
+                        break;
+                }
+            }
         }
 
         protected override void OnStopping()
@@ -609,9 +630,6 @@ namespace Primus
             base.OnStopping();
         }
 
-        #endregion
-
-        #region Private methods
 
         private void AddLog(String s, int iSev = INFO)
         {
