@@ -86,11 +86,12 @@ namespace Primus
 
         private bool bEnterBuySell = true;
         private bool bEnterVolImb = true;
-        private bool bEnterBBWick = true;
-        private bool bEnterHighLow = true;
-        private bool bEnter921Cross = true;
-        private bool bEnterKamaWick = true;
-        private bool bEnterNebula = true;
+        private bool bEnterBBWick = false;
+        private bool bEnterHighLow = false;
+        private bool bEnter921Cross = false;
+        private bool bEnterKamaWick = false;
+        private bool bEnterNebula = false;
+        private bool bEnterPinbar = false;
 
         [Display(GroupName = "Begin trading when", Name = "Standard buy/sell signal")]
         public bool EnterBuySell { get => bEnterBuySell; set { bEnterBuySell = value; RecalculateValues(); } }
@@ -106,13 +107,15 @@ namespace Primus
         public bool EnterKamaWick { get => bEnterKamaWick; set { bEnterKamaWick = value; RecalculateValues(); } }
         [Display(GroupName = "Begin trading when", Name = "Standard Nebula rules")]
         public bool EnterNebula { get => bEnterNebula; set { bEnterNebula = value; RecalculateValues(); } }
+        [Display(GroupName = "Begin trading when", Name = "Enter on pin bar")]
+        public bool EnterPinbar { get => bEnterPinbar; set { bEnterPinbar = value; RecalculateValues(); } }
 
         #endregion
 
         #region SKIP TRADING OPTIONS
 
-        private bool bSkipBBPushed = true;
-        private bool bSkipOSOB = true;
+        private bool bSkipBBPushed = false;
+        private bool bSkipOSOB = false;
 
         [Display(GroupName = "Skip trading when", Name = "BB stressed")]
         public bool SkipBBPushed { get => bSkipBBPushed; set { bSkipBBPushed = value; RecalculateValues(); } }
@@ -125,8 +128,9 @@ namespace Primus
 
         private bool bAdvAddContract = true;
         private bool bAdvAvoidNews = true;
-        private int iAdvMaxContracts = 2;
+        private int iAdvMaxContracts = 6;
         private int iAdvPauseCandles = 2;
+        private int iAdvBETicks = 10;
 
         [Display(GroupName = "Advanced Options", Name = "Avoid trading near news")]
         public bool AdvAvoidNews { get => bAdvAvoidNews; set { bAdvAvoidNews = value; RecalculateValues(); } }
@@ -139,6 +143,44 @@ namespace Primus
         [Display(Name = "Pause candles before new trade", GroupName = "Advanced Options", Order = int.MaxValue)]
         [Range(1, 90)]
         public int AdvPauseCandles { get => iAdvPauseCandles; set { iAdvPauseCandles = value; RecalculateValues(); } }
+        [Display(Name = "BreakEven after X ticks", GroupName = "Advanced Options", Order = int.MaxValue)]
+        [Range(1, 90)]
+        public int AdvBETicks { get => iAdvBETicks; set { iAdvBETicks = value; RecalculateValues(); } }
+
+        #endregion
+
+        #region EXIT OPTIONS
+
+        private bool bExWaddah = true;
+        private bool bExBBWick = true;
+        private bool bExBBEngulf = true;
+        private bool bExT3Cross = true;
+        private bool bExKAMACross = true;
+        private bool bExSqueeze = false;
+        private bool bExMajorLine = false;
+        private bool bExStairs = false;
+        private double dExATR = 1.5;
+
+        [Display(GroupName = "Exit Trade When", Name = "Waddah Explosion color change")]
+        public bool ExWaddah { get => bExWaddah; set { bExWaddah = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Bollinger band wick")]
+        public bool ExBBWick { get => bExBBWick; set { bExBBWick = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Hard crossing KAMA 9")]
+        public bool ExKAMACross { get => bExKAMACross; set { bExKAMACross = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Squeeze relaxer signal")]
+        public bool ExSqueeze { get => bExSqueeze; set { bExSqueeze = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Hitting a major line")]
+        public bool ExMajorLine { get => bExMajorLine; set { bExMajorLine = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "T3 cross")]
+        public bool ExT3Cross { get => bExT3Cross; set { bExT3Cross = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Bollinger band engulfing")]
+        public bool ExBBEngulf { get => bExBBEngulf; set { bExBBEngulf = value; RecalculateValues(); } }
+        [Display(GroupName = "Exit Trade When", Name = "Declining stairs")]
+        public bool ExStairs { get => bExStairs; set { bExStairs = value; RecalculateValues(); } }
+
+        [Display(Name = "ATR exceeds value", GroupName = "Exit Trade When", Order = int.MaxValue)]
+        public double ExATR { get => dExATR; set { dExATR = value; RecalculateValues(); } }
+
 
         #endregion
 
@@ -284,6 +326,7 @@ namespace Primus
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
+            // Rockwell
             var font = new RenderFont("Arial", iNewsFont);
             var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
             int upY = 50;
@@ -335,7 +378,9 @@ namespace Primus
             if (prevBar == bar)
                 return;
 
-            var candle = GetCandle(bar-1);
+            #region CANDLE CALCULATIONS
+
+            var candle = GetCandle(bar - 1);
             value = candle.Close;
             var chT = ChartInfo.ChartType;
             var red = candle.Close < candle.Open;
@@ -343,8 +388,6 @@ namespace Primus
 
             bShowDown = true;
             bShowUp = true;
-
-            #region CANDLE CALCULATIONS
 
             decimal _tick = ChartInfo.PriceChartContainer.Step;
             var p1C = GetCandle(bar - 2);
@@ -384,17 +427,7 @@ namespace Primus
 
             #endregion
 
-            // Volume Imbalance (candle gap)
-            if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
-                OpenPosition("Volume Imbalance", candle, bar, LONG);
-            if (red && c1R && candle.Open < p1C.Close)
-                OpenPosition("Volume Imbalance", candle, bar, SHORT);
-
-            var ThreeOutUp = c2R && c1G && c0G && p1C.Open < p2C.Close && p2C.Open < p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close > p1C.Low;
-
-            var ThreeOutDown = c2G && c1R && c0R && p1C.Open > p2C.Close && p2C.Open > p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close < p1C.Low;
-
-            #region INDICATORS CALCULATE
+            #region INDICATOR CALCULATIONS
 
             _t3.Calculate(pbar, value);
             fastEma.Calculate(pbar, value);
@@ -453,19 +486,15 @@ namespace Primus
 
             #endregion
 
+            #region BAR PATTERN CALCULATIONS
+
+            var ThreeOutUp = c2R && c1G && c0G && p1C.Open < p2C.Close && p2C.Open < p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close > p1C.Low;
+
+            var ThreeOutDown = c2G && c1R && c0R && p1C.Open > p2C.Close && p2C.Open > p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close < p1C.Low;
+
             var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-            if (eqHigh && bEnterHighLow)
-                OpenPosition("Equal High", candle, bar, SHORT);
 
             var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
-            if (eqLow && bEnterHighLow)
-                OpenPosition("Equal Low", candle, bar, LONG);
-
-            if (deltaPer < iMinDeltaPercent)
-            {
-                bShowUp = false;
-                bShowDown = false;
-            }
 
             // Squeeze momentum relaxer show
             if (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1)
@@ -473,29 +502,25 @@ namespace Primus
             if (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1)
                 iJunk = 9;
 
-            // 9/21 cross
-            if (nn > twone && prev_nn <= prev_twone && bEnter921Cross)
-                OpenPosition("9/21 cross", candle, bar, LONG);
-            if (nn < twone && prev_nn >= prev_twone && bEnter921Cross)
-                OpenPosition("9/21 cross", candle, bar, SHORT);
-
             if (c0G && c1R && c2R && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta < 0 && candle.Close > 0)
                 DrawText(bar, "Vol\nRev", Color.Yellow, Color.Transparent, false, true);
             if (c0R && c1G && c2G && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta > 0 && candle.Close > 0)
                 DrawText(bar, "Vol\nRev", Color.Lime, Color.Transparent, false, true);
 
+            if (deltaPer < iMinDeltaPercent)
+            {
+                bShowUp = false;
+                bShowDown = false;
+            }
+
             // Standard BUY / SELL
             if ((candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 < 0 && bUseSqueeze) || (x < iMinADX))
                 bShowUp = false;
 
-            if (green && bShowUp)
-                OpenPosition("Standard Buy Signal", candle, bar, LONG);
-
             if ((candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 > 0 && bUseSqueeze) || (x < iMinADX))
                 bShowDown = false;
 
-            if (red && bShowDown)
-                OpenPosition("Standard Sell Signal", candle, bar, SHORT);
+            #endregion
 
             #region ALERTS
 
@@ -524,11 +549,13 @@ namespace Primus
 
             #region REVERSAL PATTERNS
 
+            var bbWickLong = false;
+            var bbWickShort = false;
             // Bollinger band bounce
-            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger && bEnterBBWick)
-                OpenPosition("Bollinger Band Wick", candle, bar, SHORT);
-            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger && bEnterBBWick)
-                OpenPosition("Bollinger Band Wick", candle, bar, LONG);
+            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger)
+                bbWickLong = true;
+            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger)
+                bbWickShort = true;
 
             if (ThreeOutUp)
                 DrawText(bar, "3oU", Color.Yellow, Color.Transparent);
@@ -545,6 +572,47 @@ namespace Primus
 
             #endregion
 
+            #region EXIT STRATEGIES
+
+            if (bEnterBBWick && (bbWickLong || bbWickShort))
+                CloseCurrentPosition("Bollinger band wick EXIT");
+
+            // Go break even after X ticks
+            if (TradingManager.Position.IsInPosition &&
+            Math.Abs(candle.Open - TradingManager.Position.AveragePrice) > iAdvBETicks)
+                iJunk = 0;
+
+            #endregion
+
+            #region ENTRANCE STRATEGIES
+
+            if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
+                OpenPosition("Volume Imbalance", candle, bar, LONG);
+            if (red && c1R && candle.Open < p1C.Close)
+                OpenPosition("Volume Imbalance", candle, bar, SHORT);
+
+            if (eqHigh && bEnterHighLow)
+                OpenPosition("Equal High", candle, bar, SHORT);
+            if (eqLow && bEnterHighLow)
+                OpenPosition("Equal Low", candle, bar, LONG);
+
+            if (nn > twone && prev_nn <= prev_twone && bEnter921Cross)
+                OpenPosition("9/21 cross", candle, bar, LONG);
+            if (nn < twone && prev_nn >= prev_twone && bEnter921Cross)
+                OpenPosition("9/21 cross", candle, bar, SHORT);
+
+            if (bEnterBBWick && bbWickLong)
+                OpenPosition("Bollinger Band Wick", candle, bar, LONG);
+            if (bEnterBBWick && bbWickShort)
+                OpenPosition("Bollinger Band Wick", candle, bar, SHORT);
+
+            if (red && bShowDown)
+                OpenPosition("Standard Sell Signal", candle, bar, SHORT);
+            if (green && bShowUp)
+                OpenPosition("Standard Buy Signal", candle, bar, LONG);
+
+            #endregion
+
             if (!bNewsProcessed)
                 LoadStock(bar);
         }
@@ -555,6 +623,10 @@ namespace Primus
 
         private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
         {
+            var currDir = CurrentPosition > 0 ? LONG : SHORT;
+            if (iDirection != currDir)
+                CloseCurrentPosition("Opposite trade, closing current position");
+
             int iOpenTrades = 0;
             foreach (MyTrade xy in this.MyTrades)
                 if (xy.Order.State == OrderStates.Active)
@@ -638,7 +710,7 @@ namespace Primus
             if (CurrentPosition != 0 && bCloseOnStop)
             {
                 RaiseShowNotification($"Closing current position {CurrentPosition} on stopping.");
-                CloseCurrentPosition();
+                CloseCurrentPosition($"Closing current position {CurrentPosition} on stopping.");
             }
 
             base.OnStopping();
@@ -655,7 +727,7 @@ namespace Primus
             }
         }
 
-        private void CloseCurrentPosition()
+        private void CloseCurrentPosition(String s)
         {
             var order = new Order
             {
@@ -664,6 +736,7 @@ namespace Primus
                 Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
                 Type = OrderTypes.Market,
                 QuantityToFill = Math.Abs(CurrentPosition),
+                Comment = s
             };
 
             OpenOrder(order);
