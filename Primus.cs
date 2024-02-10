@@ -18,10 +18,7 @@ using OFT.Rendering.Context;
 using OFT.Rendering.Tools;
 using Utils.Common.Logging;
 
-
-// add max daily loss
-
-
+// add max daily loss 
 
 namespace Primus
 {
@@ -529,10 +526,10 @@ namespace Primus
             #region REVERSAL PATTERNS
 
             // Bollinger band bounce
-            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger)
-                DrawText(bar, "Wick", Color.Lime, Color.Transparent, false, true);
-            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger)
-                DrawText(bar, "Wick", Color.Orange, Color.Transparent, false, true);
+            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger && bEnterBBWick)
+                OpenPosition("Bollinger Band Wick", candle, bar, SHORT);
+            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger && bEnterBBWick)
+                OpenPosition("Bollinger Band Wick", candle, bar, LONG);
 
             if (ThreeOutUp)
                 DrawText(bar, "3oU", Color.Yellow, Color.Transparent);
