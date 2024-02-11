@@ -24,13 +24,13 @@ namespace Primus
     public class Primus : ChartStrategy
     {
         #region Private fields
-
+        private Order _order = new Order();
         private Stopwatch clock = new Stopwatch();
-        private Order _order;
         private DateTime dtStart = DateTime.Now;
         private String sLastTrade = String.Empty;
         private int iPrevOrderBar = -1;
         private decimal dBreakEvenPrice = 0;
+        private int iOrderDirection = -1;
 
         private const int INFO = 1;
         private const int WARN = 2;
@@ -580,7 +580,7 @@ namespace Primus
 
             #region EXIT STRATEGIES
 
-            if (TradingManager.Position.IsInPosition)
+            if (TradingManager.Position is not null)
             {
                 var dir = CurrentPosition > 0 ? LONG : SHORT;
 
@@ -610,10 +610,10 @@ namespace Primus
 
             #region ENTRANCE STRATEGIES
 
-            if (green && candle.Low < kama9 && candle.Close > kama9 && bEnterKamaWick)
-                OpenPosition("9 KAMA Wick", candle, bar, LONG);
-            if (red && candle.High > kama9 && candle.Close < kama9 && bEnterKamaWick)
-                OpenPosition("9 KAMA Wick", candle, bar, SHORT);
+            if (red && bShowDown)
+                OpenPosition("Standard Sell Signal", candle, bar, SHORT);
+            if (green && bShowUp)
+                OpenPosition("Standard Buy Signal", candle, bar, LONG);
 
             if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
                 OpenPosition("Volume Imbalance", candle, bar, LONG);
@@ -635,10 +635,10 @@ namespace Primus
             if (bEnterBBWick && bbWickShort)
                 OpenPosition("Bollinger Band Wick", candle, bar, SHORT);
 
-            if (red && bShowDown)
-                OpenPosition("Standard Sell Signal", candle, bar, SHORT);
-            if (green && bShowUp)
-                OpenPosition("Standard Buy Signal", candle, bar, LONG);
+            if (green && candle.Low < kama9 && candle.Close > kama9 && bEnterKamaWick)
+                OpenPosition("9 KAMA Wick", candle, bar, LONG);
+            if (red && candle.High > kama9 && candle.Close < kama9 && bEnterKamaWick)
+                OpenPosition("9 KAMA Wick", candle, bar, SHORT);
 
             #endregion
 
@@ -658,19 +658,10 @@ namespace Primus
             else
                 iPrevOrderBar = bar;
 
-            var currDir = CurrentPosition > 0 ? LONG : SHORT;
-            if (iDirection != currDir)
-                CloseCurrentPosition("Opposite trade, closing current position");
-
-            int iOpenTrades = 0;
-            foreach (MyTrade xy in this.MyTrades)
-                if (xy.Order.State == OrderStates.Active)
-                    iOpenTrades++;
-            if (iOpenTrades > iAdvMaxContracts)
-            {
-                AddLog("Attempted to open trade after MAX TRADES has been reached", WARN);
-                return;
-            }
+            if (iDirection == LONG && iOrderDirection == SHORT && Math.Abs(CurrentPosition) > 0)
+                CloseCurrentPosition("Opposite direction order - cancelling current");
+            if (iDirection == SHORT && iOrderDirection == LONG && Math.Abs(CurrentPosition) > 0)
+                CloseCurrentPosition("Opposite direction order - cancelling current");
 
             OrderDirections d = OrderDirections.Buy;
 
@@ -689,14 +680,31 @@ namespace Primus
                 Comment = "Bar " + bar + " - " + sReason
             };
 
-            dBreakEvenPrice = Security.BestAskPrice;
-
             if (iDirection == LONG)
                 sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
             else
                 sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
 
             OpenOrder(_order);
+            iOrderDirection = iDirection;
+        }
+
+        private void CloseCurrentPosition(String s)
+        {
+            if (Math.Abs(CurrentPosition) > 0)
+            {
+                _order = new Order
+                {
+                    Portfolio = Portfolio,
+                    Security = Security,
+                    Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
+                    Type = OrderTypes.Market,
+                    QuantityToFill = Math.Abs(CurrentPosition),
+                    Comment = s
+                };
+                OpenOrder(_order);
+                iOrderDirection = -1;
+            }
         }
 
         private void LimitAtBE()
@@ -719,32 +727,14 @@ namespace Primus
             OpenOrder(order);
         }
 
-        private void CloseCurrentPosition(String s)
-        {
-            var order = new Order
-            {
-                Portfolio = Portfolio,
-                Security = Security,
-                Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
-                Type = OrderTypes.Market,
-                QuantityToFill = Math.Abs(CurrentPosition),
-                Comment = s
-            };
-
-            OpenOrder(order);
-        }
-
         private decimal GetOrderVolume()
         {
             if (CurrentPosition == 0)
                 return Volume;
             if (CurrentPosition > 0)
-                return Volume + CurrentPosition;
+                return CurrentPosition;
 
-            if (Volume + Math.Abs(CurrentPosition) > iAdvMaxContracts)
-                return iAdvMaxContracts;
-            else
-                return Volume + Math.Abs(CurrentPosition);
+            return Volume + Math.Abs(CurrentPosition);
         }
 
         protected override void OnOrderRegisterFailed(Order order, string message)
