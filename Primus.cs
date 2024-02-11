@@ -1,12 +1,18 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Drawing;
+using System.Diagnostics;
+using System.Net;
+using System.Windows.Input;
+
 using ATAS.DataFeedsCore;
 using ATAS.Indicators;
 using ATAS.Indicators.Technical;
 using ATAS.Strategies.Chart;
-using System.Net;
 using ATAS.Indicators.Technical.Properties;
 using Newtonsoft.Json.Linq;
+using OFT.Rendering.Context;
+using OFT.Rendering.Tools;
+using Utils.Common.Logging;
 using static ATAS.Indicators.Technical.SampleProperties;
 
 using Color = System.Drawing.Color;
@@ -14,33 +20,34 @@ using MColor = System.Windows.Media.Color;
 using MColors = System.Windows.Media.Colors;
 using Pen = System.Drawing.Pen;
 using String = System.String;
-using OFT.Rendering.Context;
-using OFT.Rendering.Tools;
-using Utils.Common.Logging;
-using System.Diagnostics;
+using OFT.Rendering.Control;
 
 namespace Primus
 {
     public class Primus : ChartStrategy
     {
         #region Private fields
+
         private Order _order = new Order();
         private Stopwatch clock = new Stopwatch();
+        private Rectangle rc = new Rectangle() { X=50, Y=50, Height=200, Width=400 };
         private DateTime dtStart = DateTime.Now;
         private String sLastTrade = String.Empty;
         private int iPrevOrderBar = -1;
         private decimal dBreakEvenPrice = 0;
         private int iOrderDirection = -1;
+        private decimal pT1 = 0;
 
         private const int INFO = 1;
         private const int WARN = 2;
         private const int ERROR = 3;
+        private const int DEBUG = 0;
         private const int LONG = 1;
         private const int SHORT = 2;
         private const int ACTIVE = 1;
         private const int STOPPED = 2;
 
-        private const String sVersion = "1.0";
+        private const String sVersion = "Beta 1.0";
         private List<string> lsH = new List<string>();
         private List<string> lsM = new List<string>();
 
@@ -52,10 +59,8 @@ namespace Primus
         private int iMinADX = 0;
         private int iOffset = 9;
         private int iFontSize = 10;
-        private int iNewsFont = 10;
         private int iWaddaSensitivity = 150;
         private int iBotStatus = ACTIVE;
-        private int iTotalTrades = 0;
 
         private bool _lastBarCounted;
         private bool bNewsProcessed = false;
@@ -89,8 +94,8 @@ namespace Primus
 
         private bool bEnterBuySell = true;
         private bool bEnterVolImb = true;
-        private bool bEnterBBWick = false;
-        private bool bEnterHighLow = false;
+        private bool bEnterBBWick = true;
+        private bool bEnterHighLow = true;
         private bool bEnter921Cross = false;
         private bool bEnterKamaWick = false;
         private bool bEnterNebula = false;
@@ -131,12 +136,15 @@ namespace Primus
 
         private bool bAdvAddContract = true;
         private bool bAdvAvoidNews = true;
+        private bool bHoldTradeOnContraryOrder = false;
         private int iAdvMaxContracts = 6;
         private int iAdvPauseCandles = 2;
         private int iAdvBETicks = 10;
 
         [Display(GroupName = "Advanced Options", Name = "Avoid trading near news")]
         public bool AdvAvoidNews { get => bAdvAvoidNews; set { bAdvAvoidNews = value; RecalculateValues(); } }
+        [Display(GroupName = "Advanced Options", Name = "Hold current trade on contrary order")]
+        public bool HoldTradeOnContraryOrder { get => bHoldTradeOnContraryOrder; set { bHoldTradeOnContraryOrder = value; RecalculateValues(); } }
         [Display(GroupName = "Advanced Options", Name = "Add contract on buy signal")]
         public bool AdvAddContract { get => bAdvAddContract; set { bAdvAddContract = value; RecalculateValues(); } }
 
@@ -156,10 +164,11 @@ namespace Primus
 
         private bool bExWaddah = true;
         private bool bExHighLow = true;
-        private bool bExBBWick = false;
         private bool bExBBEngulf = true;
-        private bool bExT3Cross = true;
         private bool bExKAMACross = true;
+        private bool bExBBWick = true;
+
+        private bool bExT3Cross = false;
         private bool bExSqueeze = false;
         private bool bExMajorLine = false;
         private bool bExStairs = false;
@@ -332,8 +341,8 @@ namespace Primus
 
         protected override void OnRender(RenderContext context, DrawingLayouts layout)
         {
-            var font = new RenderFont("Arial", iNewsFont);
-            var fontB = new RenderFont("Arial", iNewsFont, FontStyle.Bold);
+            var font = new RenderFont("Calibri", iFontSize);
+            var fontB = new RenderFont("Calibri", iFontSize, FontStyle.Bold);
             int upY = 50;
             int upX = 50;
             var txt = String.Empty;
@@ -363,6 +372,7 @@ namespace Primus
             if (TradingManager.Portfolio != null && TradingManager.Position != null)
             {
                 txt = $"{TradingManager.MyTrades.Count()} trades, with PNL: {TradingManager.Position.RealizedPnL}";
+                if (iBotStatus == STOPPED) { txt = String.Empty; sLastTrade = String.Empty; }
                 context.DrawString(txt, font, Color.White, upX, upY);
                 upY += tsize.Height + 6;
                 txt = sLastTrade;
@@ -378,7 +388,10 @@ namespace Primus
 
         protected override void OnCalculate(int bar, decimal value)
         {
-            var pbar = bar - 1;
+            if (iBotStatus == STOPPED || bar < (CurrentBar - 5))
+                return;
+
+            var pbar = bar; // - 1;
             var prevBar = _prevBar;
             _prevBar = bar;
 
@@ -419,8 +432,10 @@ namespace Primus
             var c3Body = Math.Abs(p3C.Close - p3C.Open);
             var c4Body = Math.Abs(p4C.Close - p4C.Open);
 
-            var upWick50PerLarger = c0R && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
-            var downWick50PerLarger = c0G && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
+            var upWickLarger = c0R && Math.Abs(candle.High - candle.Open) > Math.Abs(candle.Low - candle.Close);
+            var downWickLarger = c0G && Math.Abs(candle.Low - candle.Open) > Math.Abs(candle.Close - candle.High);
+            var upPinbar = c0R && Math.Abs(candle.High - candle.Open) > (Math.Abs(candle.Low - candle.Close) * 3);
+            var downPinbar = c0G && Math.Abs(candle.Low - candle.Open) > (Math.Abs(candle.Close - candle.High) * 3);
 
             decimal deltaPer = 0;
             if (candle.Delta > 0 && candle.MaxDelta > 0)
@@ -502,6 +517,9 @@ namespace Primus
 
             var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
 
+            var NebulaLong = (t1 > 0 && (c0G && c1G && candle.Close > p1C.Close && p1C.Close > p2C.Close));
+            var NebulaShort = (t1 < 0 && (c0R && c1R && candle.Close < p1C.Close && p1C.Close < p2C.Close));
+
             // Squeeze momentum relaxer show
             if (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1)
                 iJunk = 9;
@@ -558,9 +576,9 @@ namespace Primus
             var bbWickLong = false;
             var bbWickShort = false;
             // Bollinger band bounce
-            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWick50PerLarger)
+            if (candle.Low < bb_bottom && candle.Open > bb_bottom && c0G && candle.Close > p1C.Close && downWickLarger)
                 bbWickLong = true;
-            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWick50PerLarger)
+            if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWickLarger)
                 bbWickShort = true;
 
             if (ThreeOutUp)
@@ -580,25 +598,25 @@ namespace Primus
 
             #region EXIT STRATEGIES
 
-            if (TradingManager.Position is not null)
+            if (CurrentPosition != 0)
             {
                 var dir = CurrentPosition > 0 ? LONG : SHORT;
 
-                if (bEnterBBWick && (bbWickLong || bbWickShort))
-                    CloseCurrentPosition("Bollinger band wick EXIT");
+                if (bExBBWick && (bbWickLong || bbWickShort))
+                    CloseCurrentPosition("Bollinger band wick EXIT", bar);
 
                 if (bExHighLow && (eqHigh || eqLow))
-                    CloseCurrentPosition("Equal high/low EXIT");
+                    CloseCurrentPosition("Equal high/low EXIT", bar);
 
                 if (candle.Close < t3 && red && bExT3Cross && dir == LONG)
-                    CloseCurrentPosition("T3 cross EXIT");
+                    CloseCurrentPosition("T3 cross EXIT", bar);
                 if (candle.Close > t3 && green && bExT3Cross && dir == SHORT)
-                    CloseCurrentPosition("T3 cross EXIT");
+                    CloseCurrentPosition("T3 cross EXIT", bar);
 
                 if (candle.Close < kama9 && red && bExKAMACross && dir == LONG)
-                    CloseCurrentPosition("9 KAMA cross EXIT");
+                    CloseCurrentPosition("9 KAMA cross EXIT", bar);
                 if (candle.Close > kama9 && green && bExKAMACross && dir == SHORT)
-                    CloseCurrentPosition("9 KAMA cross EXIT");
+                    CloseCurrentPosition("9 KAMA cross EXIT", bar);
 
                 // Go break even after X ticks
                 if (Math.Abs(dBreakEvenPrice - Security.BestBidPrice) > (_tick * iAdvBETicks))
@@ -620,6 +638,16 @@ namespace Primus
             if (red && c1R && candle.Open < p1C.Close)
                 OpenPosition("Volume Imbalance", candle, bar, SHORT);
 
+            if (downPinbar && bEnterPinbar)
+                OpenPosition("Pinbar Buy", candle, bar, LONG);
+            if (upPinbar && bEnterPinbar)
+                OpenPosition("Pinbar Sell", candle, bar, SHORT);
+
+            if (NebulaLong && bEnterNebula) //  && !sLastTrade.Contains("NEBULA"))
+                OpenPosition("NEBULA Buy Signal", candle, bar, LONG);
+            if (NebulaShort && bEnterNebula) // && !sLastTrade.Contains("NEBULA"))
+                OpenPosition("NEBULA Sell Signal", candle, bar, SHORT);
+
             if (eqHigh && bEnterHighLow)
                 OpenPosition("Equal High", candle, bar, SHORT);
             if (eqLow && bEnterHighLow)
@@ -630,9 +658,9 @@ namespace Primus
             if (nn < twone && prev_nn >= prev_twone && bEnter921Cross)
                 OpenPosition("9/21 cross", candle, bar, SHORT);
 
-            if (bEnterBBWick && bbWickLong)
+            if (bEnterBBWick && bbWickLong && downWickLarger && !sLastTrade.Contains("wick EXIT"))
                 OpenPosition("Bollinger Band Wick", candle, bar, LONG);
-            if (bEnterBBWick && bbWickShort)
+            if (bEnterBBWick && bbWickShort && upWickLarger && !sLastTrade.Contains("wick EXIT"))
                 OpenPosition("Bollinger Band Wick", candle, bar, SHORT);
 
             if (green && candle.Low < kama9 && candle.Close > kama9 && bEnterKamaWick)
@@ -644,6 +672,8 @@ namespace Primus
 
             if (!bNewsProcessed)
                 LoadStock(bar);
+
+            pT1 = t1;
         }
 
         #endregion
@@ -652,19 +682,73 @@ namespace Primus
 
         private void OpenPosition(String sReason, IndicatorCandle c, int bar, int iDirection = -1)
         {
+            String sD = String.Empty;
+            if (iBotStatus == STOPPED)
+            {
+                AddLog("Attempted to open position, but bot was stopped");
+                return;
+            }
+
+            if (iDirection == LONG)
+            {
+                sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
+                sD = sReason + " LONG (" + bar + ")";
+            }
+            else
+            {
+                sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
+                sD = sReason + " SHORT (" + bar + ")";
+            }
+
             // Limit 1 order per bar
             if (iPrevOrderBar == bar)
                 return;
             else
                 iPrevOrderBar = bar;
 
-            if (iDirection == LONG && iOrderDirection == SHORT && Math.Abs(CurrentPosition) > 0)
-                CloseCurrentPosition("Opposite direction order - cancelling current");
-            if (iDirection == SHORT && iOrderDirection == LONG && Math.Abs(CurrentPosition) > 0)
-                CloseCurrentPosition("Opposite direction order - cancelling current");
+            if (CurrentPosition > 0 && false)
+            {
+                if (iOrderDirection == LONG)
+                {
+                    Order _newOrder = _order.Clone();
+                    _newOrder.QuantityToFill = 1;
+                    _newOrder.Comment = "Modify LONG: +1 contract";
+                    ModifyOrder(_order, _newOrder);
+                    return;
+                }
+                else return;
+            }
+            else if (CurrentPosition < 0 && false)
+            {
+                if (iOrderDirection == SHORT)
+                {
+                    Order _newOrder = _order.Clone();
+                    _newOrder.QuantityToFill = 1;
+                    _newOrder.Comment = "Modify SHORT: +1 contract";
+                    ModifyOrder(_order, _newOrder);
+                    return;
+                }
+                else return;
+            }
+
+            if (iOrderDirection == SHORT && CurrentPosition > 0)
+                CloseCurrentPosition("Opposite direction order - cancelling current", bar);
+            if (iOrderDirection == LONG && CurrentPosition < 0)
+                CloseCurrentPosition("Opposite direction order - cancelling current", bar);
+
+            if (CurrentPosition > 0 && iOrderDirection == SHORT)
+            {
+                AddLog("Cannot reverse order already in progress");
+                return;
+            }
+            if (CurrentPosition < 0 && iOrderDirection == LONG)
+            {
+                AddLog("Cannot reverse order already in progress");
+                return;
+            }
+
 
             OrderDirections d = OrderDirections.Buy;
-
             if (c.Open > c.Close || iDirection == SHORT)
                 d = OrderDirections.Sell;
             if (c.Open < c.Close || iDirection == LONG)
@@ -677,20 +761,28 @@ namespace Primus
                 Direction = d,
                 Type = OrderTypes.Market,
                 QuantityToFill = 1, // GetOrderVolume(),
-                Comment = "Bar " + bar + " - " + sReason
+                Comment = sD
             };
-
-            if (iDirection == LONG)
-                sLastTrade = "Bar " + bar + " - " + sReason + " LONG at " + c.Close;
-            else
-                sLastTrade = "Bar " + bar + " - " + sReason + " SHORT at " + c.Close;
-
             OpenOrder(_order);
+            AddLog(sLastTrade);
             iOrderDirection = iDirection;
+            dBreakEvenPrice = Security.BestAskPrice;
         }
 
-        private void CloseCurrentPosition(String s)
+        private void CloseCurrentPosition(String s, int bar)
         {
+            // Limit 1 order per bar
+            if (iPrevOrderBar == bar)
+                return;
+            else
+                iPrevOrderBar = bar;
+
+            if (s.Contains("Opposite") && bHoldTradeOnContraryOrder)
+            {
+                AddLog("Current position held based upon config");
+                return;
+            }
+
             if (Math.Abs(CurrentPosition) > 0)
             {
                 _order = new Order
@@ -703,17 +795,12 @@ namespace Primus
                     Comment = s
                 };
                 OpenOrder(_order);
-                iOrderDirection = -1;
+                sLastTrade = s;
             }
         }
 
-        private void LimitAtBE()
+        private void OpenBreakEven()
         {
-            var iBEDirection = OrderDirections.Buy;
-            var currDir = CurrentPosition > 0 ? LONG : SHORT;
-            if (currDir == LONG)
-                iBEDirection = OrderDirections.Sell;
-
             var order = new Order
             {
                 Portfolio = Portfolio,
@@ -741,7 +828,7 @@ namespace Primus
         {
             if (order == _order)
             {
-                AddLog("ORDER FAILED: " + message, ERROR);
+                AddLog("ORDER FAILED: " + message);
             }
         }
 
@@ -779,7 +866,7 @@ namespace Primus
             if (CurrentPosition != 0 && bCloseOnStop)
             {
                 RaiseShowNotification($"Closing position {CurrentPosition} on stopping.");
-                CloseCurrentPosition($"Closing position {CurrentPosition} on stopping.");
+                CloseCurrentPosition($"Closing position {CurrentPosition} on stopping.", 0);
             }
 
             base.OnStopping();
@@ -789,13 +876,37 @@ namespace Primus
 
         #region MISC METHODS
 
+        private bool IsPointInsideRectangle(Rectangle rectangle, Point point)
+        {
+            return point.X >= rectangle.X && point.X <= rectangle.X + rectangle.Width && point.Y >= rectangle.Y && point.Y <= rectangle.Y + rectangle.Height;
+        }
+
+        public override bool ProcessMouseClick(RenderControlMouseEventArgs e)
+        {
+            if (e.Button == RenderControlMouseButtons.Left && IsPointInsideRectangle(rc, e.Location))
+            {
+                OpenBreakEven();
+                return true;
+            }
+
+            return false;
+        }
+
+        public override bool ProcessKeyDown(KeyEventArgs e)
+        {
+            if (iBotStatus == ACTIVE)
+                CloseCurrentPosition("Taking full profit", CurrentBar);
+            return false;
+        }
+
         private void AddLog(String s, int iSev = INFO)
         {
             switch (iSev)
             {
-                case WARN: this.LogInfo(s); break;
-                case ERROR: this.LogWarn(s); break;
-                default: this.LogError(s); break;
+                case INFO: this.LogInfo(s); break;
+                case ERROR: this.LogError(s); break;
+                case WARN: this.LogWarn(s); break;
+                default: this.LogDebug(s); break;
             }
         }
 

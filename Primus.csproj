@@ -40,6 +40,9 @@
     <Reference Include="Utils.Common">
       <HintPath>..\ATASBuySell\bin\Debug\net7.0\Utils.Common.dll</HintPath>
     </Reference>
+    <Reference Include="Utils.Windows">
+      <HintPath>..\..\..\..\..\Program Files (x86)\ATAS Platform\Utils.Windows.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
