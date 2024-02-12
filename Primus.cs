@@ -333,6 +333,14 @@ namespace Primus
         {
             bCloseOnStop = true;
             EnableCustomDrawing = true;
+
+            Add(_ao);
+            Add(_ft);
+            Add(_psar);
+            Add(_st);
+            Add(_kama9);
+            Add(_sq);
+            Add(_adx);
         }
 
         #endregion
@@ -491,7 +499,7 @@ namespace Primus
             var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 1];
             var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 2];
 
-            var t1 = ((fast - slow) - (fastM - slowM)) * iWaddaSensitivity;
+            var t1 = ((fast - slow) - (fastM - slowM)) * 150; // iWaddaSensitivity;
 
             var fisherUp = (f1 < f2);
             var fisherDown = (f2 < f1);
@@ -670,8 +678,8 @@ namespace Primus
 
             #endregion
 
-            if (!bNewsProcessed)
-                LoadStock(bar);
+//            if (!bNewsProcessed)
+//                LoadStock(bar);
 
             pT1 = t1;
         }
