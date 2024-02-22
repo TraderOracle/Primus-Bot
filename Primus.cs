@@ -46,23 +46,17 @@ namespace Primus
         private const int ACTIVE = 1;
         private const int STOPPED = 2;
 
-        private const String sVersion = "Beta 1.1";
-        private List<string> lsH = new List<string>();
-        private List<string> lsM = new List<string>();
+        private const String sVersion = "Beta 1.2";
 
         private decimal iJunk = 0;
-        private int _lastBar = -1;
         private int _prevBar = -1;
         private int iMinDelta = 0;
         private int iMinDeltaPercent = 0;
         private int iMinADX = 0;
         private int iOffset = 9;
         private int iFontSize = 10;
-        private int iWaddaSensitivity = 150;
         private int iBotStatus = ACTIVE;
 
-        private bool _lastBarCounted;
-        private bool bNewsProcessed = false;
         private bool bShowUp = true;
         private bool bShowDown = true;
         private bool bCloseOnStop = true;
@@ -125,6 +119,8 @@ namespace Primus
         #region ADVANCED OPTIONS
 
         private bool bHoldTradeOnContraryOrder = false;
+        private bool bBuyDaDip = false;
+        private bool bSellDaPush = false;
         private int iAdvMaxContracts = 6;
 
         [Display(GroupName = "Advanced Options", Name = "Hold current trade on contrary order")]
@@ -133,6 +129,12 @@ namespace Primus
         [Display(Name = "Max simultaneous contracts", GroupName = "Advanced Options", Order = int.MaxValue)]
         [Range(1, 90)]
         public int AdvMaxContracts { get => iAdvMaxContracts; set { iAdvMaxContracts = value; RecalculateValues(); } }
+
+        [Display(GroupName = "Aggressive Options", Name = "Buy on ever red candle")]
+        public bool BuyDaDip { get => bBuyDaDip; set { bBuyDaDip = value; RecalculateValues(); } }
+
+        [Display(GroupName = "Aggressive Options", Name = "Sell on every green candle")]
+        public bool SellDaPush { get => bSellDaPush; set { bSellDaPush = value; RecalculateValues(); } }
 
         #endregion
 
@@ -239,15 +241,19 @@ namespace Primus
             var fontB = new RenderFont("Calibri", iFontSize, FontStyle.Bold);
             int upY = 50;
             int upX = 50;
-            var txt = String.Empty;
+            var txt = "Howdy";
+            var tsize = context.MeasureString(txt, fontB);
 
             // LINE 1 - BOT STATUS + ACCOUNT + START TIME
             switch (iBotStatus)
             {
                 case ACTIVE:
+                    txt = $"PrimusBot version " + sVersion;
+                    context.DrawString(txt, fontB, Color.Gold, upX, upY);
+                    upY += tsize.Height + 6;
                     TimeSpan t = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds);
                     String an = String.Format("{0:D2}:{1:D2}:{2:D2}", t.Hours, t.Minutes, t.Seconds);
-                    txt = $"PrimusBot ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
+                    txt = $"ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
                     context.DrawString(txt, fontB, Color.Lime, upX, upY);
                     if (!clock.IsRunning)
                         clock.Start();
@@ -259,7 +265,7 @@ namespace Primus
                         clock.Stop();
                     break;
             }
-            var tsize = context.MeasureString(txt, fontB);
+            tsize = context.MeasureString(txt, fontB);
             upY += tsize.Height + 6;
 
             // LINE 2 - TOTAL TRADES + PNL
@@ -291,7 +297,7 @@ namespace Primus
             if (iBotStatus == STOPPED || bar < (CurrentBar - 5))
                 return;
 
-            var pbar = bar; // - 1;
+            var pbar = bar - 1;
             var prevBar = _prevBar;
             _prevBar = bar;
 
@@ -435,6 +441,11 @@ namespace Primus
                 bbWickShort = true;
 
             #region ENTRANCE STRATEGIES
+
+            if (bSellDaPush && green)
+                OpenPosition("Selling The Push", candle, bar, SHORT);
+            if (bBuyDaDip && red)
+                OpenPosition("Buying The Dip", candle, bar, LONG);
 
             if (bShowDown)
                 OpenPosition("Standard Sell Signal", candle, bar, SHORT);
@@ -641,6 +652,8 @@ namespace Primus
                     CloseCurrentPosition("Bot stopped by user command", CurrentBar);
                     iBotStatus = STOPPED;
                 }
+                else
+                    iBotStatus = ACTIVE;
             }
             return false;
         }
