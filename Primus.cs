@@ -34,9 +34,7 @@ namespace Primus
         private DateTime dtStart = DateTime.Now;
         private String sLastTrade = String.Empty;
         private int iPrevOrderBar = -1;
-        private decimal dBreakEvenPrice = 0;
         private int iOrderDirection = -1;
-        private decimal pT1 = 0;
 
         private const int INFO = 1;
         private const int WARN = 2;
@@ -47,7 +45,7 @@ namespace Primus
         private const int ACTIVE = 1;
         private const int STOPPED = 2;
 
-        private const String sVersion = "Beta 1.0";
+        private const String sVersion = "Beta 1.1";
         private List<string> lsH = new List<string>();
         private List<string> lsM = new List<string>();
 
@@ -95,7 +93,6 @@ namespace Primus
         private bool bEnterBuySell = true;
         private bool bEnterVolImb = true;
         private bool bEnterBBWick = true;
-        private bool bEnterHighLow = true;
         private bool bEnter921Cross = false;
         private bool bEnterKamaWick = false;
         private bool bEnterNebula = false;
@@ -103,103 +100,46 @@ namespace Primus
 
         [Display(GroupName = "Begin trading when", Name = "Standard buy/sell signal")]
         public bool EnterBuySell { get => bEnterBuySell; set { bEnterBuySell = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "Volume imbalance (candle gap)")]
         public bool EnterVolImb { get => bEnterVolImb; set { bEnterVolImb = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "Bollinger bands wick")]
         public bool EnterBBWick { get => bEnterBBWick; set { bEnterBBWick = value; RecalculateValues(); } }
-        [Display(GroupName = "Begin trading when", Name = "High/Low reversal")]
-        public bool EnterHighLow { get => bEnterHighLow; set { bEnterHighLow = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "9/21 cross")]
         public bool Enter921Cross { get => bEnter921Cross; set { bEnter921Cross = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "KAMA wick")]
         public bool EnterKamaWick { get => bEnterKamaWick; set { bEnterKamaWick = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "Standard Nebula rules")]
         public bool EnterNebula { get => bEnterNebula; set { bEnterNebula = value; RecalculateValues(); } }
+
         [Display(GroupName = "Begin trading when", Name = "Enter on pin bar")]
         public bool EnterPinbar { get => bEnterPinbar; set { bEnterPinbar = value; RecalculateValues(); } }
 
         #endregion
 
-        #region SKIP TRADING OPTIONS
-
-        private bool bSkipBBPushed = false;
-        private bool bSkipOSOB = false;
-
-        [Display(GroupName = "Skip trading when", Name = "BB stressed")]
-        public bool SkipBBPushed { get => bSkipBBPushed; set { bSkipBBPushed = value; RecalculateValues(); } }
-        [Display(GroupName = "Skip trading when", Name = "Oversold or Overbought")]
-        public bool SkipOSOB { get => bSkipOSOB; set { bSkipOSOB = value; RecalculateValues(); } }
-
-        #endregion
-
         #region ADVANCED OPTIONS
 
-        private bool bAdvAddContract = true;
-        private bool bAdvAvoidNews = true;
         private bool bHoldTradeOnContraryOrder = false;
         private int iAdvMaxContracts = 6;
-        private int iAdvPauseCandles = 2;
-        private int iAdvBETicks = 10;
 
-        [Display(GroupName = "Advanced Options", Name = "Avoid trading near news")]
-        public bool AdvAvoidNews { get => bAdvAvoidNews; set { bAdvAvoidNews = value; RecalculateValues(); } }
         [Display(GroupName = "Advanced Options", Name = "Hold current trade on contrary order")]
         public bool HoldTradeOnContraryOrder { get => bHoldTradeOnContraryOrder; set { bHoldTradeOnContraryOrder = value; RecalculateValues(); } }
-        [Display(GroupName = "Advanced Options", Name = "Add contract on buy signal")]
-        public bool AdvAddContract { get => bAdvAddContract; set { bAdvAddContract = value; RecalculateValues(); } }
 
         [Display(Name = "Max simultaneous contracts", GroupName = "Advanced Options", Order = int.MaxValue)]
         [Range(1, 90)]
         public int AdvMaxContracts { get => iAdvMaxContracts; set { iAdvMaxContracts = value; RecalculateValues(); } }
-        [Display(Name = "Pause candles before new trade", GroupName = "Advanced Options", Order = int.MaxValue)]
-        [Range(1, 90)]
-        public int AdvPauseCandles { get => iAdvPauseCandles; set { iAdvPauseCandles = value; RecalculateValues(); } }
-        [Display(Name = "BreakEven after X ticks", GroupName = "Advanced Options", Order = int.MaxValue)]
-        [Range(1, 90)]
-        public int AdvBETicks { get => iAdvBETicks; set { iAdvBETicks = value; RecalculateValues(); } }
-
-        #endregion
-
-        #region EXIT OPTIONS
-
-        private bool bExWaddah = true;
-        private bool bExHighLow = true;
-        private bool bExBBEngulf = true;
-        private bool bExKAMACross = true;
-        private bool bExBBWick = true;
-
-        private bool bExT3Cross = false;
-        private bool bExSqueeze = false;
-        private bool bExMajorLine = false;
-        private bool bExStairs = false;
-        private double dExATR = 1.5;
-
-        [Display(GroupName = "Exit Trade When", Name = "Waddah Explosion color change")]
-        public bool ExWaddah { get => bExWaddah; set { bExWaddah = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Bollinger band wick")]
-        public bool ExBBWick { get => bExBBWick; set { bExBBWick = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Hard crossing KAMA 9")]
-        public bool ExKAMACross { get => bExKAMACross; set { bExKAMACross = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Squeeze relaxer signal")]
-        public bool ExSqueeze { get => bExSqueeze; set { bExSqueeze = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Hitting a major line")]
-        public bool ExMajorLine { get => bExMajorLine; set { bExMajorLine = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "T3 cross")]
-        public bool ExT3Cross { get => bExT3Cross; set { bExT3Cross = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Bollinger band engulfing")]
-        public bool ExBBEngulf { get => bExBBEngulf; set { bExBBEngulf = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Declining stairs")]
-        public bool ExStairs { get => bExStairs; set { bExStairs = value; RecalculateValues(); } }
-        [Display(GroupName = "Exit Trade When", Name = "Equal high/low")]
-        public bool ExHighLow { get => bExHighLow; set { bExHighLow = value; RecalculateValues(); } }
-
-        [Display(Name = "ATR exceeds value", GroupName = "Exit Trade When", Order = int.MaxValue)]
-        public double ExATR { get => dExATR; set { dExATR = value; RecalculateValues(); } }
-
 
         #endregion
 
         #region INDICATORS
+
+        private readonly SMA _LindaShort = new SMA() { Period = 3 };
+        private readonly SMA _LindaLong = new SMA() { Period = 10 };
+        private readonly SMA _LindaSignal = new SMA() { Period = 16 };
 
         private readonly RSI _rsi = new() { Period = 14 };
         private readonly ATR _atr = new() { Period = 14 };
@@ -214,10 +154,8 @@ namespace Primus
         private readonly SuperTrend _st = new SuperTrend() { Period = 10, Multiplier = 1m };
         private readonly BollingerBands _bb = new BollingerBands() { Period = 20, Shift = 0, Width = 2 };
         private readonly KAMA _kama9 = new KAMA() { ShortPeriod = 2, LongPeriod = 109, EfficiencyRatioPeriod = 9 };
-        private readonly KAMA _kama21 = new KAMA() { ShortPeriod = 2, LongPeriod = 109, EfficiencyRatioPeriod = 21 };
         private readonly MACD _macd = new MACD() { ShortPeriod = 12, LongPeriod = 26, SignalPeriod = 9 };
         private readonly T3 _t3 = new T3() { Period = 10, Multiplier = 1 };
-        private readonly SqueezeMomentum _sq = new SqueezeMomentum() { BBPeriod = 20, BBMultFactor = 2, KCPeriod = 20, KCMultFactor = 1.5m, UseTrueRange = false };
 
         #endregion
 
@@ -233,24 +171,34 @@ namespace Primus
         private bool bVolumeImbalances = true;
 
         // Default FALSE
-        private bool bUseSqueeze = false;
         private bool bUseMACD = false;
+        private bool bUseLinda = false;
         private bool bUseKAMA = false;
 
         [Display(GroupName = "Buy/Sell Filters", Name = "Waddah Explosion", Description = "The Waddah Explosion must be the correct color, and have a value")]
         public bool Use_Waddah_Explosion { get => bUseWaddah; set { bUseWaddah = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "Awesome Oscillator", Description = "AO is positive or negative")]
         public bool Use_Awesome { get => bUseAO; set { bUseAO = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "Parabolic SAR", Description = "The PSAR must be signaling a buy/sell signal same as the arrow")]
         public bool Use_PSAR { get => bUsePSAR; set { bUsePSAR = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "Squeeze Momentum", Description = "The squeeze must be the correct color")]
         public bool Use_Squeeze_Momentum { get => bUseSqueeze; set { bUseSqueeze = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "MACD", Description = "Standard 12/26/9 MACD crossing in the correct direction")]
         public bool Use_MACD { get => bUseMACD; set { bUseMACD = value; RecalculateValues(); } }
+
+        [Display(GroupName = "Buy/Sell Filters", Name = "Linda MACD", Description = "")]
+        public bool UseLinda { get => bUseLinda; set { bUseLinda = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "SuperTrend", Description = "Price must align to the current SuperTrend trend")]
         public bool Use_SuperTrend { get => bUseSuperTrend; set { bUseSuperTrend = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "T3", Description = "Price must cross the T3")]
         public bool Use_T3 { get => bUseT3; set { bUseT3 = value; RecalculateValues(); } }
+
         [Display(GroupName = "Buy/Sell Filters", Name = "Fisher Transform", Description = "Fisher Transform must cross to the correct direction")]
         public bool Use_Fisher_Transform { get => bUseFisher; set { bUseFisher = value; RecalculateValues(); } }
 
@@ -268,65 +216,6 @@ namespace Primus
 
         #endregion
 
-        #region Stock HTTP Fetch
-        private void ParseStockEvents(String result, int bar)
-        {
-            int iJSONStart = 0;
-            int iJSONEnd = -1;
-            String sFinalText = String.Empty; String sNews = String.Empty; String name = String.Empty; String impact = String.Empty; String time = String.Empty; String actual = String.Empty; String previous = String.Empty; String forecast = String.Empty;
-
-            try
-            {
-                iJSONStart = result.IndexOf("window.calendarComponentStates[1] = ");
-                iJSONEnd = result.IndexOf("\"}]}],", iJSONStart);
-                sFinalText = result.Substring(iJSONStart, iJSONEnd - iJSONStart);
-                sFinalText = sFinalText.Replace("window.calendarComponentStates[1] = ", "");
-                sFinalText += "\"}]}]}";
-
-                var jsFile = JObject.Parse(sFinalText);
-                foreach (JToken j3 in (JArray)jsFile["days"])
-                {
-                    JToken j2 = j3.SelectToken("events");
-                    foreach (JToken j in j2)
-                    {
-                        name = j["name"].ToString();
-                        impact = j["impactTitle"].ToString();
-                        time = j["timeLabel"].ToString();
-                        actual = j["actual"].ToString();
-                        previous = j["previous"].ToString();
-                        forecast = j["forecast"].ToString();
-                        sNews = time + "     " + name;
-                        if (previous.ToString().Trim().Length > 0)
-                            sNews += " (Prev: " + previous + ", Forecast: " + forecast + ")";
-                        if (impact.Contains("High"))
-                            lsH.Add(sNews);
-                        if (impact.Contains("Medium"))
-                            lsM.Add(sNews);
-                    }
-                }
-            }
-            catch { }
-        }
-
-        private void LoadStock(int bar)
-        {
-            try
-            {
-                HttpWebRequest myRequest = (HttpWebRequest)WebRequest.Create("https://www.forexfactory.com/calendar?day=today");
-                myRequest.Method = "GET";
-                myRequest.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36";
-                WebResponse myResponse = myRequest.GetResponse();
-                StreamReader sr = new StreamReader(myResponse.GetResponseStream(), System.Text.Encoding.UTF8);
-                string result = sr.ReadToEnd();
-                sr.Close();
-                myResponse.Close();
-                ParseStockEvents(result, bar);
-                bNewsProcessed = true;
-            }
-            catch { }
-        }
-        #endregion
-
         #region CONSTRUCTOR
 
         public Primus()
@@ -339,7 +228,6 @@ namespace Primus
             Add(_psar);
             Add(_st);
             Add(_kama9);
-            Add(_sq);
             Add(_adx);
         }
 
@@ -361,7 +249,7 @@ namespace Primus
                 case ACTIVE:
                     TimeSpan t = TimeSpan.FromMilliseconds(clock.ElapsedMilliseconds);
                     String an = String.Format("{0:D2}:{1:D2}:{2:D2}", t.Hours, t.Minutes, t.Seconds);
-                    txt = $"BOT ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
+                    txt = $"PrimusBot ACTIVE on {TradingManager.Portfolio.AccountID} since " + dtStart.ToString() + " (" + an + ")";
                     context.DrawString(txt, fontB, Color.Lime, upX, upY);
                     if (!clock.IsRunning)
                         clock.Start();
@@ -387,6 +275,12 @@ namespace Primus
                 context.DrawString(txt, font, Color.White, upX, upY);
             }
 
+            if (sLastLog != String.Empty && iBotStatus == ACTIVE)
+            {
+                upY += tsize.Height + 6;
+                txt = $"Last Log: " + sLastLog;
+                context.DrawString(txt, font, Color.Yellow, upX, upY);
+            }
 
         }
 
@@ -477,12 +371,6 @@ namespace Primus
             var fastM = ((ValueDataSeries)fastEma.DataSeries[0])[pbar - 1];
             var slow = ((ValueDataSeries)slowEma.DataSeries[0])[pbar];
             var slowM = ((ValueDataSeries)slowEma.DataSeries[0])[pbar - 1];
-            var sq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar];
-            var sq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar];
-            var psq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 1];
-            var psq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 1];
-            var ppsq1 = ((ValueDataSeries)_sq.DataSeries[0])[pbar - 2];
-            var ppsq2 = ((ValueDataSeries)_sq.DataSeries[1])[pbar - 2];
             var f1 = ((ValueDataSeries)_ft.DataSeries[0])[pbar];
             var f2 = ((ValueDataSeries)_ft.DataSeries[1])[pbar];
             var st = ((ValueDataSeries)_st.DataSeries[0])[pbar];
@@ -517,27 +405,13 @@ namespace Primus
 
             #region BAR PATTERN CALCULATIONS
 
-            var ThreeOutUp = c2R && c1G && c0G && p1C.Open < p2C.Close && p2C.Open < p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close > p1C.Low;
-
-            var ThreeOutDown = c2G && c1R && c0R && p1C.Open > p2C.Close && p2C.Open > p1C.Close && Math.Abs(p1C.Open - p1C.Close) > Math.Abs(p2C.Open - p2C.Close) && candle.Close < p1C.Low;
-
-            var eqHigh = c0R && c1R && c2G && c3G && candle.Close < p1C.Close && (p1C.Open == p2C.Close || p1C.Open == p2C.Close + _tick || p1C.Open + _tick == p2C.Close);
-
-            var eqLow = c0G && c1G && c2R && c3R && candle.Close > p1C.Close && (p1C.Close == p2C.Open || p1C.Close == p2C.Open + _tick || p1C.Close + _tick == p2C.Open);
+            // Linda MACD
+            var lmacd = _LindaShort.Calculate(pbar, value) - _LindaLong.Calculate(pbar, value);
+            var signal = _LindaSignal.Calculate(pbar, lmacd);
+            var Linda = macd - signal;
 
             var NebulaLong = (t1 > 0 && (c0G && c1G && candle.Close > p1C.Close && p1C.Close > p2C.Close));
             var NebulaShort = (t1 < 0 && (c0R && c1R && candle.Close < p1C.Close && p1C.Close < p2C.Close));
-
-            // Squeeze momentum relaxer show
-            if (sq1 > 0 && sq1 < psq1 && psq1 > ppsq1)
-                iJunk = 9;
-            if (sq1 < 0 && sq1 > psq1 && psq1 < ppsq1)
-                iJunk = 9;
-
-            if (c0G && c1R && c2R && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta < 0 && candle.Close > 0)
-                DrawText(bar, "Vol\nRev", Color.Yellow, Color.Transparent, false, true);
-            if (c0R && c1G && c2G && VolSec(p1C) > VolSec(p2C) && VolSec(p2C) > VolSec(p3C) && candle.Delta > 0 && candle.Close > 0)
-                DrawText(bar, "Vol\nRev", Color.Lime, Color.Transparent, false, true);
 
             if (deltaPer < iMinDeltaPercent)
             {
@@ -546,40 +420,13 @@ namespace Primus
             }
 
             // Standard BUY / SELL
-            if ((candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 < 0 && bUseSqueeze) || (x < iMinADX))
+            if ((Linda < 0 && bUseLinda) || (candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (x < iMinADX))
                 bShowUp = false;
 
-            if ((candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (sq1 > 0 && bUseSqueeze) || (x < iMinADX))
+            if ((Linda > 0 && bUseLinda) || (candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (x < iMinADX))
                 bShowDown = false;
 
             #endregion
-
-            #region ALERTS
-
-            if (_lastBar != bar)
-            {
-                if (_lastBarCounted)
-                {
-                    if (bVolumeImbalances)
-                        if ((green && c1G && candle.Open > p1C.Close) || (red && c1R && candle.Open < p1C.Close))
-                            AddAlert(AlertFile, "Volume Imbalance");
-
-                    if (bShowUp)
-                        AddAlert(AlertFile, "BUY Signal");
-                    else if (bShowDown)
-                        AddAlert(AlertFile, "BUY Signal");
-                }
-                _lastBar = bar;
-            }
-            else
-            {
-                if (!_lastBarCounted)
-                    _lastBarCounted = true;
-            }
-
-            #endregion
-
-            #region REVERSAL PATTERNS
 
             var bbWickLong = false;
             var bbWickShort = false;
@@ -589,56 +436,11 @@ namespace Primus
             if (candle.High > bb_top && candle.Open < bb_top && c0R && candle.Close < p1C.Close && upWickLarger)
                 bbWickShort = true;
 
-            if (ThreeOutUp)
-                DrawText(bar, "3oU", Color.Yellow, Color.Transparent);
-            if (ThreeOutDown)
-                DrawText(bar, "3oD", Color.Yellow, Color.Transparent);
-
-            // Trampoline
-            if (c0R && c1R && candle.Close < p1C.Close && (rsi >= 70 || rsi1 >= 70 || rsi2 >= 70) &&
-                c2G && p2C.High >= (bb_top - (_tick * 30)))
-                DrawText(bar, "TR", Color.Yellow, Color.BlueViolet);
-            if (c0G && c1G && candle.Close > p1C.Close && (rsi < 25 || rsi1 < 25 || rsi2 < 25) &&
-                c2R && p2C.Low <= (bb_bottom + (_tick * 30)))
-                DrawText(bar - 2, "TR", Color.Yellow, Color.BlueViolet);
-
-            #endregion
-
-            #region EXIT STRATEGIES
-
-            if (CurrentPosition != 0)
-            {
-                var dir = CurrentPosition > 0 ? LONG : SHORT;
-
-                if (bExBBWick && (bbWickLong || bbWickShort))
-                    CloseCurrentPosition("Bollinger band wick EXIT", bar);
-
-                if (bExHighLow && (eqHigh || eqLow))
-                    CloseCurrentPosition("Equal high/low EXIT", bar);
-
-                if (candle.Close < t3 && red && bExT3Cross && dir == LONG)
-                    CloseCurrentPosition("T3 cross EXIT", bar);
-                if (candle.Close > t3 && green && bExT3Cross && dir == SHORT)
-                    CloseCurrentPosition("T3 cross EXIT", bar);
-
-                if (candle.Close < kama9 && red && bExKAMACross && dir == LONG)
-                    CloseCurrentPosition("9 KAMA cross EXIT", bar);
-                if (candle.Close > kama9 && green && bExKAMACross && dir == SHORT)
-                    CloseCurrentPosition("9 KAMA cross EXIT", bar);
-
-                // Go break even after X ticks
-                if (Math.Abs(dBreakEvenPrice - Security.BestBidPrice) > (_tick * iAdvBETicks))
-                    iJunk = 0; // LimitAtBE();
-
-            }
-
-            #endregion
-
             #region ENTRANCE STRATEGIES
 
-            if (red && bShowDown)
+            if (bShowDown)
                 OpenPosition("Standard Sell Signal", candle, bar, SHORT);
-            if (green && bShowUp)
+            if (bShowUp)
                 OpenPosition("Standard Buy Signal", candle, bar, LONG);
 
             if (green && c1G && candle.Open > p1C.Close && bEnterVolImb)
@@ -678,10 +480,6 @@ namespace Primus
 
             #endregion
 
-//            if (!bNewsProcessed)
-//                LoadStock(bar);
-
-            pT1 = t1;
         }
 
         #endregion
@@ -714,31 +512,6 @@ namespace Primus
             else
                 iPrevOrderBar = bar;
 
-            if (CurrentPosition > 0 && false)
-            {
-                if (iOrderDirection == LONG)
-                {
-                    Order _newOrder = _order.Clone();
-                    _newOrder.QuantityToFill = 1;
-                    _newOrder.Comment = "Modify LONG: +1 contract";
-                    ModifyOrder(_order, _newOrder);
-                    return;
-                }
-                else return;
-            }
-            else if (CurrentPosition < 0 && false)
-            {
-                if (iOrderDirection == SHORT)
-                {
-                    Order _newOrder = _order.Clone();
-                    _newOrder.QuantityToFill = 1;
-                    _newOrder.Comment = "Modify SHORT: +1 contract";
-                    ModifyOrder(_order, _newOrder);
-                    return;
-                }
-                else return;
-            }
-
             if (iOrderDirection == SHORT && CurrentPosition > 0)
                 CloseCurrentPosition("Opposite direction order - cancelling current", bar);
             if (iOrderDirection == LONG && CurrentPosition < 0)
@@ -754,7 +527,6 @@ namespace Primus
                 AddLog("Cannot reverse order already in progress");
                 return;
             }
-
 
             OrderDirections d = OrderDirections.Buy;
             if (c.Open > c.Close || iDirection == SHORT)
@@ -774,7 +546,7 @@ namespace Primus
             OpenOrder(_order);
             AddLog(sLastTrade);
             iOrderDirection = iDirection;
-            dBreakEvenPrice = Security.BestAskPrice;
+            AddAlert(AlertFile, "POSITION OPENED");
         }
 
         private void CloseCurrentPosition(String s, int bar)
@@ -791,7 +563,7 @@ namespace Primus
                 return;
             }
 
-            if (Math.Abs(CurrentPosition) > 0)
+            if (CurrentPosition != 0)
             {
                 _order = new Order
                 {
@@ -807,37 +579,10 @@ namespace Primus
             }
         }
 
-        private void OpenBreakEven()
-        {
-            var order = new Order
-            {
-                Portfolio = Portfolio,
-                Security = Security,
-                Direction = CurrentPosition > 0 ? OrderDirections.Sell : OrderDirections.Buy,
-                Type = OrderTypes.Limit,
-                QuantityToFill = Math.Abs(CurrentPosition),
-                Price = dBreakEvenPrice,
-                Comment = "Profit reached at " + iAdvBETicks + " ticks, break even open"
-            };
-            OpenOrder(order);
-        }
-
-        private decimal GetOrderVolume()
-        {
-            if (CurrentPosition == 0)
-                return Volume;
-            if (CurrentPosition > 0)
-                return CurrentPosition;
-
-            return Volume + Math.Abs(CurrentPosition);
-        }
-
         protected override void OnOrderRegisterFailed(Order order, string message)
         {
             if (order == _order)
-            {
                 AddLog("ORDER FAILED: " + message);
-            }
         }
 
         protected override void OnOrderChanged(Order order)
@@ -893,17 +638,17 @@ namespace Primus
         {
             if (e.Button == RenderControlMouseButtons.Left && IsPointInsideRectangle(rc, e.Location))
             {
-                OpenBreakEven();
-                return true;
+                if (iBotStatus == ACTIVE)
+                    CloseCurrentPosition("Taking full profit", CurrentBar);
             }
-
-            return false;
-        }
-
-        public override bool ProcessKeyDown(KeyEventArgs e)
-        {
-            if (iBotStatus == ACTIVE)
-                CloseCurrentPosition("Taking full profit", CurrentBar);
+            if (e.Button == RenderControlMouseButtons.Right && IsPointInsideRectangle(rc, e.Location))
+            {
+                if (iBotStatus == ACTIVE)
+                {
+                    CloseCurrentPosition("Bot stopped by user command", CurrentBar);
+                    iBotStatus = STOPPED;
+                }
+            }
             return false;
         }
 
@@ -919,10 +664,6 @@ namespace Primus
         }
 
         private decimal VolSec(IndicatorCandle c) { return c.Volume / Convert.ToDecimal((c.LastTime - c.Time).TotalSeconds); }
-
-        protected void DrawText(int bBar, String strX, Color cI, Color cB, bool bOverride = false, bool bSwap = false)
-        {
-        }
 
             #endregion
 
