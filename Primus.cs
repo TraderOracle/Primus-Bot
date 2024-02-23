@@ -46,7 +46,7 @@ namespace Primus
         private const int ACTIVE = 1;
         private const int STOPPED = 2;
 
-        private const String sVersion = "Beta 1.2";
+        private const String sVersion = "Beta 1.3";
 
         private decimal iJunk = 0;
         private int _prevBar = -1;
@@ -144,6 +144,7 @@ namespace Primus
         private readonly SMA _LindaLong = new SMA() { Period = 10 };
         private readonly SMA _LindaSignal = new SMA() { Period = 16 };
 
+        private readonly HMA _hma = new HMA() { };
         private readonly RSI _rsi = new() { Period = 14 };
         private readonly ATR _atr = new() { Period = 14 };
         private readonly AwesomeOscillator _ao = new AwesomeOscillator();
@@ -177,6 +178,7 @@ namespace Primus
         private bool bUseMACD = false;
         private bool bUseLinda = false;
         private bool bUseKAMA = false;
+        private bool bUseHMA = false;
 
         [Display(GroupName = "Buy/Sell Filters", Name = "Waddah Explosion", Description = "The Waddah Explosion must be the correct color, and have a value")]
         public bool Use_Waddah_Explosion { get => bUseWaddah; set { bUseWaddah = value; RecalculateValues(); } }
@@ -192,6 +194,8 @@ namespace Primus
 
         [Display(GroupName = "Buy/Sell Filters", Name = "Linda MACD", Description = "")]
         public bool UseLinda { get => bUseLinda; set { bUseLinda = value; RecalculateValues(); } }
+        [Display(GroupName = "Buy/Sell Filters", Name = "Hull Moving Avg", Description = "Price must align to the HMA trend")]
+        public bool Use_HMA { get => bUseHMA; set { bUseHMA = value; RecalculateValues(); } }
 
         [Display(GroupName = "Buy/Sell Filters", Name = "SuperTrend", Description = "Price must align to the current SuperTrend trend")]
         public bool Use_SuperTrend { get => bUseSuperTrend; set { bUseSuperTrend = value; RecalculateValues(); } }
@@ -229,6 +233,7 @@ namespace Primus
             Add(_st);
             Add(_kama9);
             Add(_adx);
+            Add(_hma);
         }
 
         #endregion
@@ -390,9 +395,13 @@ namespace Primus
             var rsi = ((ValueDataSeries)_rsi.DataSeries[0])[pbar];
             var rsi1 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 1];
             var rsi2 = ((ValueDataSeries)_rsi.DataSeries[0])[pbar - 2];
+            var hma = ((ValueDataSeries)_hma.DataSeries[0])[pbar];
+            var phma = ((ValueDataSeries)_hma.DataSeries[0])[pbar - 1];
 
             var t1 = ((fast - slow) - (fastM - slowM)) * 150; // iWaddaSensitivity;
 
+            var hullUp = hma > phma;
+            var hullDown = hma < phma;
             var fisherUp = (f1 < f2);
             var fisherDown = (f2 < f1);
             var macdUp = (m1 > m2);
@@ -424,10 +433,10 @@ namespace Primus
             }
 
             // Standard BUY / SELL
-            if ((Linda < 0 && bUseLinda) || (candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (x < iMinADX))
+            if ((Linda < 0 && bUseLinda) || (candle.Delta < iMinDelta) || (!macdUp && bUseMACD) || (psarSell && bUsePSAR) || (!fisherUp && bUseFisher) || (value < t3 && bUseT3) || (value < kama9 && bUseKAMA) || (t1 < 0 && bUseWaddah) || (ao < 0 && bUseAO) || (st == 0 && bUseSuperTrend) || x < iMinADX || (bUseHMA && hullDown))
                 bShowUp = false;
 
-            if ((Linda > 0 && bUseLinda) || (candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || (x < iMinADX))
+            if ((Linda > 0 && bUseLinda) || (candle.Delta > (iMinDelta * -1)) || (psarBuy && bUsePSAR) || (!macdDown && bUseMACD) || (!fisherDown && bUseFisher) || (value > kama9 && bUseKAMA) || (value > t3 && bUseT3) || (t1 >= 0 && bUseWaddah) || (ao > 0 && bUseAO) || (st == 0 && bUseSuperTrend) || x < iMinADX || (bUseHMA && hullUp))
                 bShowDown = false;
 
             #endregion
@@ -462,9 +471,9 @@ namespace Primus
             if (upPinbar && bEnterPinbar)
                 OpenPosition("Pinbar Sell", candle, bar, SHORT);
 
-            if (NebulaLong && bEnterNebula) //  && !sLastTrade.Contains("NEBULA"))
+            if (NebulaLong && bEnterNebula && CurrentPosition == 0) //  && !sLastTrade.Contains("NEBULA"))
                 OpenPosition("NEBULA Buy Signal", candle, bar, LONG);
-            if (NebulaShort && bEnterNebula) // && !sLastTrade.Contains("NEBULA"))
+            if (NebulaShort && bEnterNebula && CurrentPosition == 0) // && !sLastTrade.Contains("NEBULA"))
                 OpenPosition("NEBULA Sell Signal", candle, bar, SHORT);
 
             if (nn > twone && prev_nn <= prev_twone && bEnter921Cross)
